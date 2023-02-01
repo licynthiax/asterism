@@ -162,7 +162,7 @@ impl Game {
         let mut y = 0;
 
         for ch in map.chars() {
-            if ch.is_digit(10) {
+            if ch.is_ascii_digit() {
                 let tile_idx = ch.to_string().parse::<usize>().unwrap();
                 if tile_idx > self.state.tile_type_count {
                     return Err(format!("tile {} not found", tile_idx));
