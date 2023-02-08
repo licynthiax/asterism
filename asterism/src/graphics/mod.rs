@@ -1,2 +1,1 @@
-pub mod animation;
-pub mod shapes;
+pub mod draw;

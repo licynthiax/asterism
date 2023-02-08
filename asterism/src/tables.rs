@@ -36,13 +36,21 @@ impl<QueryID: Hash + Eq + Copy + std::fmt::Debug> ConditionTables<QueryID> {
         self.query_output.insert(id, output);
     }
 
+    pub fn get_row<T: 'static>(&self, id: QueryID) -> Result<&[T], TableError<QueryID>> {
+        let query_output: &[T] = self.query_output.get::<Vec<T>>(&id)?;
+        Ok(query_output)
+    }
+
     /// updates a row of the table with the given output, doing no processing.
     pub fn update_single<T: 'static>(
         &mut self,
         id: QueryID,
         output: Vec<T>,
     ) -> Result<&[T], TableError<QueryID>> {
-        let query = self.composes.get(&id).ok_or(TableError::ComposeNotFound)?;
+        let query = self
+            .composes
+            .get(&id)
+            .ok_or(TableError::QueryNotFound(id))?;
         if query.is_none() {
             let query_output = self.query_output.get_mut(&id)?;
             *query_output = output;
@@ -58,8 +66,11 @@ impl<QueryID: Hash + Eq + Copy + std::fmt::Debug> ConditionTables<QueryID> {
         id: QueryID,
         predicate: impl Fn(&T) -> bool,
     ) -> Result<&[T], TableError<QueryID>> {
-        let query = self.composes.get(&id).ok_or(TableError::ComposeNotFound)?;
-        let query = query.as_ref().ok_or(TableError::MismatchedQueryAction)?;
+        let query = self
+            .composes
+            .get(&id)
+            .ok_or(TableError::QueryNotFound(id))?;
+        let query = query.as_ref().ok_or(TableError::ComposeNotFound)?;
         match query {
             Compose::Filter(other_id) => {
                 let prev_output = self.query_output.get::<Vec<T>>(other_id)?;
@@ -81,8 +92,11 @@ impl<QueryID: Hash + Eq + Copy + std::fmt::Debug> ConditionTables<QueryID> {
         &mut self,
         id: QueryID,
     ) -> Result<&[(A, B)], TableError<QueryID>> {
-        let query = self.composes.get(&id).ok_or(TableError::ComposeNotFound)?;
-        let query = query.as_ref().ok_or(TableError::MismatchedQueryAction)?;
+        let query = self
+            .composes
+            .get(&id)
+            .ok_or(TableError::QueryNotFound(id))?;
+        let query = query.as_ref().ok_or(TableError::ComposeNotFound)?;
         match query {
             Compose::Zip(id_1, id_2) => {
                 let zip_1 = self.query_output.get::<Vec<A>>(id_1)?;
@@ -124,7 +138,7 @@ use std::any::TypeId;
 
 /// Wrapper around `anycollections::AnyHashMap` that does typechecking at runtime so you don't have to worry about accidentally transmuting something you shouldn't have and causing undefined behavior. NOTE that `get()` and `get_mut()` in `anycollections::AnyHashMap` are very unsafe, but aren't marked as such.
 ///
-/// The double lookups aren't ideal but work for now. Something like `HashMap/BTreeMap<ID, (TypeId, Box<something something UnsafeAny>)>` (????) would be better performance-wise but I can't be bothered to write that at the moment. (📌 unsafe-any: https://docs.rs/unsafe-any/0.4.2/unsafe_any/)
+/// The double lookups aren't ideal but work for now. Something like `HashMap/BTreeMap<ID, (TypeId, Box<something something UnsafeAny>)>` (????) might be better performance-wise but I can't be bothered to write that at the moment. (📌 unsafe-any: https://docs.rs/unsafe-any/0.4.2/unsafe_any/)
 struct AnyHashMap<ID: Hash + Eq> {
     map: anycollections::AnyHashMap<ID>,
     /// `types_map.get(id)` *must* always be the `TypeId` of the type of map.get(id)'s output, otherwise very unsafe things will happen.

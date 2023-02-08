@@ -1,4 +1,5 @@
 //! adding/removing entities
+use asterism::graphics::draw::*;
 use asterism::Logic;
 use asterism::{collision::CollisionReaction, physics::PhysicsReaction};
 use macroquad::math::Vec2;
@@ -9,12 +10,17 @@ use crate::{Game, Logics};
 impl Game {
     pub fn add_paddle(&mut self, paddle: Paddle) -> PaddleID {
         let id = PaddleID::new(self.state.paddle_id_max);
-        self.logics.consume_paddle(
-            id,
-            self.state
-                .get_col_idx(self.state.paddles.len(), CollisionEnt::Paddle),
-            paddle,
+
+        let col_idx = self
+            .state
+            .get_col_idx(self.state.paddles.len(), CollisionEnt::Paddle);
+
+        let rect = Drawable::Rectangle(
+            Rect::new(paddle.pos.x, paddle.pos.y, paddle.size.x, paddle.size.y),
+            WHITE,
         );
+        self.draw.drawables.insert(col_idx, rect);
+        self.logics.consume_paddle(id, col_idx, paddle);
 
         self.state.paddle_id_max += 1;
         self.state.paddles.push(id);
@@ -26,6 +32,13 @@ impl Game {
         let col_idx = self
             .state
             .get_col_idx(self.state.balls.len(), CollisionEnt::Ball);
+
+        let rect = Drawable::Rectangle(
+            Rect::new(ball.pos.x, ball.pos.y, ball.size.x, ball.size.y),
+            YELLOW,
+        );
+        self.draw.drawables.insert(col_idx, rect);
+
         self.logics.consume_ball(col_idx, ball);
         self.state.ball_id_max += 1;
         self.state.balls.push(id);
@@ -38,6 +51,13 @@ impl Game {
         let col_idx = self
             .state
             .get_col_idx(self.state.walls.len(), CollisionEnt::Wall);
+
+        let rect = Drawable::Rectangle(
+            Rect::new(wall.pos.x, wall.pos.y, wall.size.x, wall.size.y),
+            SKYBLUE,
+        );
+        self.draw.drawables.insert(col_idx, rect);
+
         self.logics.consume_wall(col_idx, wall);
         self.state.wall_id_max += 1;
         self.state.walls.push(id);
@@ -54,55 +74,58 @@ impl Game {
     }
 
     pub(crate) fn remove_paddle(&mut self, paddle: PaddleID) {
-        let ent_i = self
+        let ent_idx = self
             .state
             .paddles
             .iter()
             .position(|pid| *pid == paddle)
             .unwrap();
-        self.logics.control.mapping.remove(ent_i);
+        let state_idx = self.state.get_col_idx(ent_idx, CollisionEnt::Paddle);
+
+        self.logics.control.mapping.remove(ent_idx);
         self.logics
             .collision
-            .handle_predicate(&CollisionReaction::RemoveBody(
-                self.state.get_col_idx(ent_i, CollisionEnt::Paddle),
-            ));
+            .handle_predicate(&CollisionReaction::RemoveBody(state_idx));
 
-        self.state.paddles.remove(ent_i);
+        self.draw.drawables.remove(state_idx);
+        self.state.paddles.remove(ent_idx);
     }
 
     pub(crate) fn remove_wall(&mut self, wall: WallID) {
-        let ent_i = self
+        let ent_idx = self
             .state
             .walls
             .iter()
             .position(|wid| *wid == wall)
             .unwrap();
+        let state_idx = self.state.get_col_idx(ent_idx, CollisionEnt::Wall);
+
         self.logics
             .collision
-            .handle_predicate(&CollisionReaction::RemoveBody(
-                self.state.get_col_idx(ent_i, CollisionEnt::Wall),
-            ));
+            .handle_predicate(&CollisionReaction::RemoveBody(state_idx));
 
-        self.state.walls.remove(ent_i);
+        self.draw.drawables.remove(state_idx);
+        self.state.walls.remove(ent_idx);
     }
 
     pub(crate) fn remove_ball(&mut self, ball: BallID) {
-        let ent_i = self
+        let ent_idx = self
             .state
             .balls
             .iter()
             .position(|bid| *bid == ball)
             .unwrap();
+        let state_idx = self.state.get_col_idx(ent_idx, CollisionEnt::Ball);
+
         self.logics
             .physics
-            .handle_predicate(&PhysicsReaction::RemoveBody(ent_i));
+            .handle_predicate(&PhysicsReaction::RemoveBody(ent_idx));
         self.logics
             .collision
-            .handle_predicate(&CollisionReaction::RemoveBody(
-                self.state.get_col_idx(ent_i, CollisionEnt::Ball),
-            ));
+            .handle_predicate(&CollisionReaction::RemoveBody(state_idx));
 
-        self.state.balls.remove(ent_i);
+        self.draw.drawables.remove(state_idx);
+        self.state.balls.remove(ent_idx);
     }
 
     pub(crate) fn remove_score(&mut self, score: ScoreID) {

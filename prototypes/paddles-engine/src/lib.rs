@@ -3,6 +3,7 @@
 
 use asterism::{
     control::{KeyboardControl, MacroquadInputWrapper},
+    graphics::draw::*,
     physics::PointPhysics,
     resources::QueuedResources,
 };
@@ -127,6 +128,7 @@ pub struct Game {
     pub logics: Logics,
     pub events: Events,
     pub tables: ConditionTables<QueryType>,
+    pub draw: Draw,
 }
 
 impl Game {
@@ -155,11 +157,14 @@ impl Game {
             QueryType::BallCol,
             Some(Compose::Filter(QueryType::ColIdent)),
         );
+        let mut draw = Draw::new();
+        draw.background_color = DARKBLUE;
 
         Self {
             state: State::default(),
             logics: Logics::new(),
             events: Events::new(),
+            draw,
             tables,
         }
     }
@@ -234,7 +239,7 @@ pub async fn run(mut game: Game) {
         if is_key_down(KeyCode::Escape) {
             break;
         }
-        draw(&game);
+        draw(&mut game);
 
         control(&mut game);
         physics(&mut game);
@@ -284,8 +289,8 @@ fn control(game: &mut Game) {
         .update_single::<CtrlIdent>(QueryType::CtrlIdent, game.logics.control.get_table())
         .unwrap();
 
-    if let Some(control) = game.events.control.clone() {
-        control(game);
+    if let Some(control_fn) = game.events.control.clone() {
+        control_fn(game);
     }
 }
 
@@ -310,8 +315,8 @@ fn physics(game: &mut Game) {
             .handle_predicate(&CollisionReaction::SetPos(idx, data.pos));
     }
 
-    if let Some(physics) = game.events.physics.clone() {
-        physics(game);
+    if let Some(physics_fn) = game.events.physics.clone() {
+        physics_fn(game);
     }
 }
 
@@ -335,6 +340,7 @@ fn collision(game: &mut Game) {
             Box::new(|(idx, _): &ColIdent| *idx > paddles_len + walls_len),
         )
         .unwrap();
+
     for (idx, data) in ans.iter() {
         let idx = idx - paddles_len - walls_len;
         game.logics
@@ -342,8 +348,8 @@ fn collision(game: &mut Game) {
             .handle_predicate(&PhysicsReaction::SetPos(idx, data.center - data.half_size));
     }
 
-    if let Some(collision) = game.events.collision.clone() {
-        collision(game);
+    if let Some(collision_fn) = game.events.collision.clone() {
+        collision_fn(game);
     }
 }
 
@@ -357,24 +363,22 @@ fn resources(game: &mut Game) {
         .update_single::<RsrcIdent>(QueryType::RsrcIdent, game.logics.resources.get_table())
         .unwrap();
 
-    if let Some(resources) = game.events.resources.clone() {
-        resources(game);
+    if let Some(resource_fn) = game.events.resources.clone() {
+        resource_fn(game);
     }
 }
 
-pub fn draw(game: &Game) {
-    // bad default draw fn
-    clear_background(BLUE);
-
-    for (center, hs) in game
-        .logics
-        .collision
-        .centers
-        .iter()
-        .zip(game.logics.collision.half_sizes.iter())
-    {
-        let pos = *center - *hs;
-        let size = *hs * 2.0;
-        draw_rectangle(pos.x, pos.y, size.x, size.y, WHITE);
+pub fn draw(game: &mut Game) {
+    let col_data = game
+        .tables
+        .get_row::<ColIdent>(QueryType::ColIdent)
+        .unwrap();
+    for (i, (_, col)) in col_data.iter().enumerate() {
+        let center = col.center;
+        let hs = col.half_size;
+        let rect = Rect::new(center.x - hs.x, center.y - hs.y, hs.x * 2.0, hs.y * 2.0);
+        game.draw.update_rect(i, rect);
     }
+    game.draw.draw();
+    // draw_text(&get_fps().to_string(), 0.0, 16.0, 16.0, BLACK);
 }
