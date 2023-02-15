@@ -1,75 +1,137 @@
 //! adding/removing entities
+use asterism::collision::CollisionData;
 use asterism::graphics::draw::*;
 use asterism::Logic;
 use asterism::{collision::CollisionReaction, physics::PhysicsReaction};
 use macroquad::math::Vec2;
 
 use crate::types::*;
-use crate::{Game, Logics};
+use crate::Game;
+
+macro_rules! add_ent {
+    (@attach $game:expr, $id:ident $gamefield:ident $ent_name:ident $ent_ty:ty; $id_ty:ty [collision: $col_data:expr]) => {
+        let col_ent = $col_data.id;
+        let col_idx = $game
+            .state
+            .get_col_idx($game.state.$gamefield.len(), col_ent);
+
+        let collision = &mut $game.logics.collision;
+        let hs = $ent_name.size / 2.0;
+        let center = $ent_name.pos + hs;
+        collision.centers.insert(col_idx, center);
+        collision.half_sizes.insert(col_idx, hs);
+        collision.velocities.insert(col_idx, Vec2::ZERO);
+        collision.metadata.insert(col_idx, $col_data);
+    };
+
+
+    (@attach $game:expr, $id:ident $gamefield:ident $ent_name:ident $ent_ty:ty; $id_ty:ty [control]) => {
+        let control = &mut $game.logics.control;
+        for (act_id, keycode, valid) in $ent_name.controls {
+            control.add_key_map($id.idx(), keycode, act_id, valid);
+        }
+    };
+
+    (@attach $game:expr, $id:ident $gamefield:ident $ent_name:ident $ent_ty:ty; $id_ty:ty [resource]) => {
+        $game.logics.resources
+            .items
+            .insert(RsrcPool::Score($id), ($ent_name.value, <$ent_ty>::MIN, <$ent_ty>::MAX));
+    };
+
+    (@attach $game:expr, $id:ident $gamefield:ident $ent_name:ident $ent_ty:ty; $id_ty:ty [physics]) => {
+        $game.logics.physics
+            .add_physics_entity($ent_name.pos, $ent_name.vel, Vec2::ZERO);
+    };
+
+    // 'col_ent' is the collision entity because in this engine, everything that can be
+    // collided with is also drawn
+    (@attach $game:expr, $id:ident $gamefield:ident $ent_name:ident $ent_ty:ty; $id_ty:ty [draw: $col_ent:expr, $color:expr]) => {
+        let col_idx = $game
+            .state
+            .get_col_idx($game.state.$gamefield.len(), $col_ent);
+
+        let rect = Drawable::Rectangle(
+            Rect::new(
+                $ent_name.pos.x,
+                $ent_name.pos.y,
+                $ent_name.size.x,
+                $ent_name.size.y,
+            ),
+            $color,
+        );
+        $game.draw.drawables.insert(col_idx, rect);
+    };
+
+    ($gamefield:ident: ($ent_name:ident: $ent_ty:ty) -> $id_ty:ty {$([$($logic:tt)*]),*}, $game:expr, $id:ident) => {
+        $(
+            add_ent!(@attach $game, $id $gamefield $ent_name $ent_ty; $id_ty [$($logic)*]);
+        )*
+
+        $game.state.$gamefield.push($id);
+    };
+}
 
 impl Game {
     pub fn add_paddle(&mut self, paddle: Paddle) -> PaddleID {
         let id = PaddleID::new(self.state.paddle_id_max);
-
-        let col_idx = self
-            .state
-            .get_col_idx(self.state.paddles.len(), CollisionEnt::Paddle);
-
-        let rect = Drawable::Rectangle(
-            Rect::new(paddle.pos.x, paddle.pos.y, paddle.size.x, paddle.size.y),
-            WHITE,
-        );
-        self.draw.drawables.insert(col_idx, rect);
-        self.logics.consume_paddle(id, col_idx, paddle);
+        let col_data = CollisionData {
+            solid: true,
+            fixed: true,
+            id: CollisionEnt::Paddle,
+        };
 
         self.state.paddle_id_max += 1;
-        self.state.paddles.push(id);
+        add_ent!(
+            paddles: (paddle: Paddle) -> PaddleID {
+                [collision: col_data],
+                [control],
+                [draw: CollisionEnt::Paddle, WHITE]
+            }, self, id);
         id
     }
 
     pub fn add_ball(&mut self, ball: Ball) -> BallID {
         let id = BallID::new(self.state.ball_id_max);
-        let col_idx = self
-            .state
-            .get_col_idx(self.state.balls.len(), CollisionEnt::Ball);
-
-        let rect = Drawable::Rectangle(
-            Rect::new(ball.pos.x, ball.pos.y, ball.size.x, ball.size.y),
-            YELLOW,
-        );
-        self.draw.drawables.insert(col_idx, rect);
-
-        self.logics.consume_ball(col_idx, ball);
+        let col_data = CollisionData {
+            solid: true,
+            fixed: false,
+            id: CollisionEnt::Ball,
+        };
         self.state.ball_id_max += 1;
-        self.state.balls.push(id);
-
+        add_ent!(
+            balls: (ball: Ball) -> BallID {
+                [collision: col_data],
+                [physics],
+                [draw: CollisionEnt::Ball, YELLOW]
+            }, self, id);
         id
     }
 
     pub fn add_wall(&mut self, wall: Wall) -> WallID {
         let id = WallID::new(self.state.wall_id_max);
-        let col_idx = self
-            .state
-            .get_col_idx(self.state.walls.len(), CollisionEnt::Wall);
-
-        let rect = Drawable::Rectangle(
-            Rect::new(wall.pos.x, wall.pos.y, wall.size.x, wall.size.y),
-            SKYBLUE,
-        );
-        self.draw.drawables.insert(col_idx, rect);
-
-        self.logics.consume_wall(col_idx, wall);
         self.state.wall_id_max += 1;
-        self.state.walls.push(id);
+        let col_data = CollisionData {
+            solid: true,
+            fixed: true,
+            id: CollisionEnt::Wall,
+        };
+
+        add_ent!(
+            walls: (wall: Wall) -> WallID {
+                [collision: col_data],
+                [draw: CollisionEnt::Wall, SKYBLUE]
+            }, self, id);
 
         id
     }
 
     pub fn add_score(&mut self, score: Score) -> ScoreID {
         let id = ScoreID::new(self.state.score_id_max);
-        self.logics.consume_score(id, score);
         self.state.score_id_max += 1;
-        self.state.scores.push(id);
+        add_ent!(
+            scores: (score: Score) -> ScoreID {
+                [resource]
+            }, self, id);
         id
     }
 
@@ -139,73 +201,5 @@ impl Game {
         self.logics.resources.items.remove(&rsrc);
 
         self.state.scores.remove(ent_i);
-    }
-}
-
-impl Logics {
-    pub fn consume_paddle(&mut self, id: PaddleID, col_idx: usize, paddle: Paddle) {
-        let hs = paddle.size / 2.0;
-        let center = paddle.pos + hs;
-        self.collision.centers.insert(col_idx, center);
-        self.collision.half_sizes.insert(col_idx, hs);
-        self.collision.velocities.insert(col_idx, Vec2::ZERO);
-
-        use asterism::collision::CollisionData;
-        self.collision.metadata.insert(
-            col_idx,
-            CollisionData {
-                solid: true,
-                fixed: true,
-                id: CollisionEnt::Paddle,
-            },
-        );
-
-        for (act_id, keycode, valid) in paddle.controls {
-            self.control.add_key_map(id.idx(), keycode, act_id, valid);
-        }
-    }
-
-    pub fn consume_wall(&mut self, col_idx: usize, wall: Wall) {
-        let hs = wall.size / 2.0;
-        let center = wall.pos + hs;
-        self.collision.centers.insert(col_idx, center);
-        self.collision.half_sizes.insert(col_idx, hs);
-        self.collision.velocities.insert(col_idx, Vec2::ZERO);
-
-        use asterism::collision::CollisionData;
-        self.collision.metadata.insert(
-            col_idx,
-            CollisionData {
-                solid: true,
-                fixed: true,
-                id: CollisionEnt::Wall,
-            },
-        );
-    }
-
-    pub fn consume_ball(&mut self, col_idx: usize, ball: Ball) {
-        self.physics
-            .add_physics_entity(ball.pos, ball.vel, Vec2::ZERO);
-        let hs = ball.size / 2.0;
-        let center = ball.pos + hs;
-        self.collision.centers.insert(col_idx, center);
-        self.collision.half_sizes.insert(col_idx, hs);
-        self.collision.velocities.insert(col_idx, Vec2::ZERO);
-
-        use asterism::collision::CollisionData;
-        self.collision.metadata.insert(
-            col_idx,
-            CollisionData {
-                solid: true,
-                fixed: false,
-                id: CollisionEnt::Ball,
-            },
-        );
-    }
-
-    pub fn consume_score(&mut self, id: ScoreID, score: Score) {
-        self.resources
-            .items
-            .insert(RsrcPool::Score(id), (score.value, Score::MIN, Score::MAX));
     }
 }
