@@ -28,59 +28,61 @@ async fn main() {
 
 fn init(game: &mut Game) {
     // ball
-    let mut ball = Ball::new();
-    ball.set_pos(Vec2::new(
-        WIDTH as f32 / 2.0 - BALL_SIZE as f32 / 2.0,
-        HEIGHT as f32 / 2.0 - BALL_SIZE as f32 / 2.0,
-    ));
-    ball.set_size(Vec2::new(BALL_SIZE as f32, BALL_SIZE as f32));
+    let ball = Ball::new(
+        Vec2::new(
+            WIDTH as f32 / 2.0 - BALL_SIZE as f32 / 2.0,
+            HEIGHT as f32 / 2.0 - BALL_SIZE as f32 / 2.0,
+        ),
+        Vec2::new(BALL_SIZE as f32, BALL_SIZE as f32),
+    );
     game.add_ball(ball);
 
     // walls
     // left
-    let mut wall = Wall::new();
-    wall.set_pos(Vec2::new(-1.0, 0.0));
-    wall.set_size(Vec2::new(1.0, HEIGHT as f32));
-    let left_wall = game.add_wall(wall);
+    let left_wall = game.add_wall(Wall::new(
+        Vec2::new(-1.0, 0.0),
+        Vec2::new(1.0, HEIGHT as f32),
+    ));
     // right
-    let mut wall = Wall::new();
-    wall.set_pos(Vec2::new(WIDTH as f32, 0.0));
-    wall.set_size(Vec2::new(1.0, HEIGHT as f32));
-    let right_wall = game.add_wall(wall);
+    let right_wall = game.add_wall(Wall::new(
+        Vec2::new(WIDTH as f32, 0.0),
+        Vec2::new(1.0, HEIGHT as f32),
+    ));
     // top
-    let mut wall = Wall::new();
-    wall.set_pos(Vec2::new(0.0, -1.0));
-    wall.set_size(Vec2::new(WIDTH as f32, 1.0));
-    game.add_wall(wall);
+    game.add_wall(Wall::new(
+        Vec2::new(0.0, -1.0),
+        Vec2::new(WIDTH as f32, 1.0),
+    ));
     // bottom
-    let mut wall = Wall::new();
-    wall.set_pos(Vec2::new(0.0, HEIGHT as f32));
-    wall.set_size(Vec2::new(WIDTH as f32, 1.0));
-    game.add_wall(wall);
+    game.add_wall(Wall::new(
+        Vec2::new(0.0, HEIGHT as f32),
+        Vec2::new(WIDTH as f32, 1.0),
+    ));
 
     // paddle 1
-    let mut paddle1 = Paddle::new();
+    let mut paddle1 = Paddle::new(
+        Vec2::new(
+            PADDLE_OFF_X as f32,
+            HEIGHT as f32 / 2.0 - PADDLE_HEIGHT as f32 / 2.0,
+        ),
+        Vec2::new(PADDLE_WIDTH as f32, PADDLE_HEIGHT as f32),
+    );
     let action_q = paddle1.add_control_map(KeyCode::Q, true);
     let action_a = paddle1.add_control_map(KeyCode::A, true);
     let action_w = paddle1.add_control_map(KeyCode::W, true);
-    paddle1.set_pos(Vec2::new(
-        PADDLE_OFF_X as f32,
-        HEIGHT as f32 / 2.0 - PADDLE_HEIGHT as f32 / 2.0,
-    ));
-    paddle1.set_size(Vec2::new(PADDLE_WIDTH as f32, PADDLE_HEIGHT as f32));
     game.add_paddle(paddle1);
 
     // paddle 2
-    let mut paddle2 = Paddle::new();
+    let mut paddle2 = Paddle::new(
+        Vec2::new(
+            WIDTH as f32 - PADDLE_OFF_X as f32 - PADDLE_WIDTH as f32,
+            HEIGHT as f32 / 2.0 - PADDLE_HEIGHT as f32 / 2.0,
+        ),
+        Vec2::new(PADDLE_WIDTH as f32, PADDLE_HEIGHT as f32),
+    );
     let action_o = paddle2.add_control_map(KeyCode::O, true);
     let action_l = paddle2.add_control_map(KeyCode::L, true);
     let action_i = paddle2.add_control_map(KeyCode::I, false);
-    paddle2.set_pos(Vec2::new(
-        WIDTH as f32 - PADDLE_OFF_X as f32 - PADDLE_WIDTH as f32,
-        HEIGHT as f32 / 2.0 - PADDLE_HEIGHT as f32 / 2.0,
-    ));
-    paddle2.set_size(Vec2::new(PADDLE_WIDTH as f32, PADDLE_HEIGHT as f32));
-
     game.add_paddle(paddle2);
 
     let score1 = game.add_score(Score::new());

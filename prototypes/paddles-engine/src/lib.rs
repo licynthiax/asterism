@@ -239,14 +239,10 @@ pub async fn run(mut game: Game) {
         if is_key_down(KeyCode::Escape) {
             break;
         }
+
         draw(&mut game);
 
-        control(&mut game);
-        physics(&mut game);
-        collision(&mut game);
-        resources(&mut game);
-
-        // remove
+        // remove and add entities from previous frame
         game.state.remove_queue.sort_by(|a, b| {
             let a = match_ent_id!(a, only ent: { ent.idx() } );
             let b = match_ent_id!(b, only ent: { ent.idx() });
@@ -274,6 +270,11 @@ pub async fn run(mut game: Game) {
                 score: { game.add_score(score); }
             );
         }
+
+        control(&mut game);
+        physics(&mut game);
+        collision(&mut game);
+        resources(&mut game);
 
         next_frame().await;
     }

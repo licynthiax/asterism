@@ -28,57 +28,59 @@ async fn main() {
 
 fn init(game: &mut Game) {
     // ball
-    let mut ball = Ball::new();
-    ball.set_pos(Vec2::new(
-        WIDTH as f32 / 2.0 - BALL_SIZE as f32 / 2.0,
-        HEIGHT as f32 - PADDLE_OFF_X as f32 * 2.0,
-    ));
-    ball.set_size(Vec2::new(BALL_SIZE as f32, BALL_SIZE as f32));
+    let ball = Ball::new(
+        Vec2::new(
+            WIDTH as f32 / 2.0 - BALL_SIZE as f32 / 2.0,
+            HEIGHT as f32 - PADDLE_OFF_X as f32 * 2.0,
+        ),
+        Vec2::new(BALL_SIZE as f32, BALL_SIZE as f32),
+    );
     game.add_ball(ball);
 
     // walls
     // left
-    let mut wall = Wall::new();
-    wall.set_pos(Vec2::new(-1.0, 0.0));
-    wall.set_size(Vec2::new(1.0, HEIGHT as f32));
-    game.add_wall(wall);
+    game.add_wall(Wall::new(
+        Vec2::new(-1.0, 0.0),
+        Vec2::new(1.0, HEIGHT as f32),
+    ));
     // right
-    let mut wall = Wall::new();
-    wall.set_pos(Vec2::new(WIDTH as f32, 0.0));
-    wall.set_size(Vec2::new(1.0, HEIGHT as f32));
-    game.add_wall(wall);
+    game.add_wall(Wall::new(
+        Vec2::new(WIDTH as f32, 0.0),
+        Vec2::new(1.0, HEIGHT as f32),
+    ));
     // top
-    let mut wall = Wall::new();
-    wall.set_pos(Vec2::new(0.0, -1.0));
-    wall.set_size(Vec2::new(WIDTH as f32, 1.0));
-    game.add_wall(wall);
+    game.add_wall(Wall::new(
+        Vec2::new(0.0, -1.0),
+        Vec2::new(WIDTH as f32, 1.0),
+    ));
     // bottom
-    let mut wall = Wall::new();
-    wall.set_pos(Vec2::new(0.0, HEIGHT as f32));
-    wall.set_size(Vec2::new(WIDTH as f32, 1.0));
-    let bottom_wall = game.add_wall(wall);
+    let bottom_wall = game.add_wall(Wall::new(
+        Vec2::new(0.0, HEIGHT as f32),
+        Vec2::new(WIDTH as f32, 1.0),
+    ));
 
     // blocks
     let block_size = Vec2::new(32.0, 16.0);
     (0..5).for_each(|y| {
         (0..8).for_each(|x| {
-            let mut wall = Wall::new();
-            wall.set_pos(Vec2::new(x as f32 * 32.0, y as f32 * 16.0));
-            wall.set_size(block_size);
-            game.add_wall(wall);
+            game.add_wall(Wall::new(
+                Vec2::new(x as f32 * 32.0, y as f32 * 16.0),
+                block_size,
+            ));
         })
     });
 
     // paddle 1
-    let mut paddle = Paddle::new();
+    let mut paddle = Paddle::new(
+        Vec2::new(
+            WIDTH as f32 / 2.0 - PADDLE_WIDTH as f32 / 2.0,
+            HEIGHT as f32 - PADDLE_OFF_X as f32,
+        ),
+        Vec2::new(PADDLE_WIDTH as f32, PADDLE_HEIGHT as f32),
+    );
     let left = paddle.add_control_map(KeyCode::Left, true);
     let right = paddle.add_control_map(KeyCode::Right, true);
     let action_serve = paddle.add_control_map(KeyCode::Space, true);
-    paddle.set_pos(Vec2::new(
-        WIDTH as f32 / 2.0 - PADDLE_WIDTH as f32 / 2.0,
-        HEIGHT as f32 - PADDLE_OFF_X as f32,
-    ));
-    paddle.set_size(Vec2::new(PADDLE_WIDTH as f32, PADDLE_HEIGHT as f32));
     game.add_paddle(paddle);
 
     let score = game.add_score(Score::new());
@@ -93,9 +95,7 @@ fn init(game: &mut Game) {
         let block_size = Vec2::new(32.0, 16.0);
         (0..5).for_each(|y| {
             (0..8).for_each(|x| {
-                let mut wall = Wall::new();
-                wall.set_pos(Vec2::new(x as f32 * 32.0, y as f32 * 16.0));
-                wall.set_size(block_size);
+                let wall = Wall::new(Vec2::new(x as f32 * 32.0, y as f32 * 16.0), block_size);
                 state.queue_add(Ent::Wall(wall));
             })
         });

@@ -64,7 +64,6 @@ pub enum RsrcPool {
     Score(ScoreID),
 }
 
-#[derive(Default)]
 pub struct Paddle {
     pub pos: Vec2,
     pub size: Vec2,
@@ -72,16 +71,12 @@ pub struct Paddle {
 }
 
 impl Paddle {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn set_pos(&mut self, pos: Vec2) {
-        self.pos = pos;
-    }
-
-    pub fn set_size(&mut self, size: Vec2) {
-        self.size = size;
+    pub fn new(pos: Vec2, size: Vec2) -> Self {
+        Self {
+            pos,
+            size,
+            controls: Vec::new(),
+        }
     }
 
     pub fn add_control_map(&mut self, keycode: KeyCode, valid: bool) -> ActionID {
@@ -91,7 +86,6 @@ impl Paddle {
     }
 }
 
-#[derive(Default)]
 pub struct Ball {
     pub pos: Vec2,
     pub size: Vec2,
@@ -99,40 +93,23 @@ pub struct Ball {
 }
 
 impl Ball {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn set_pos(&mut self, pos: Vec2) {
-        self.pos = pos;
-    }
-
-    pub fn set_size(&mut self, size: Vec2) {
-        self.size = size;
-    }
-
-    pub fn set_vel(&mut self, vel: Vec2) {
-        self.vel = vel;
+    pub fn new(pos: Vec2, size: Vec2) -> Self {
+        Self {
+            pos,
+            size,
+            vel: Vec2::ZERO,
+        }
     }
 }
 
-#[derive(Default)]
 pub struct Wall {
     pub pos: Vec2,
     pub size: Vec2,
 }
 
 impl Wall {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn set_pos(&mut self, pos: Vec2) {
-        self.pos = pos;
-    }
-
-    pub fn set_size(&mut self, size: Vec2) {
-        self.size = size;
+    pub fn new(pos: Vec2, size: Vec2) -> Self {
+        Self { pos, size }
     }
 }
 
