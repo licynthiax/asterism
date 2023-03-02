@@ -21,7 +21,6 @@ pub use asterism::physics::{PhysicsEvent, PhysicsReaction, PointPhysData};
 pub use asterism::resources::{ResourceEventType, ResourceReaction, Transaction};
 pub use asterism::tables::*;
 pub use asterism::{Logic, OutputTable};
-// pub use events::PaddlesUserEvents;
 pub use types::*;
 
 pub struct Logics {
@@ -50,6 +49,7 @@ pub enum EntID {
     Score(ScoreID),
 }
 
+#[derive(Clone)]
 pub enum Ent {
     Wall(Wall),
     Ball(Ball),
@@ -120,9 +120,6 @@ impl State {
     }
 }
 
-pub trait PaddlesGame {}
-impl PaddlesGame for Game {}
-
 pub struct Game {
     pub state: State,
     pub logics: Logics,
@@ -157,6 +154,7 @@ impl Game {
             QueryType::BallCol,
             Some(Compose::Filter(QueryType::ColIdent)),
         );
+
         let mut draw = Draw::new();
         draw.background_color = DARKBLUE;
 
@@ -167,12 +165,6 @@ impl Game {
             draw,
             tables,
         }
-    }
-
-    pub fn add_query(&mut self) -> UserQueryID {
-        let id = UserQueryID::new(self.events.queries_max_id);
-        self.events.queries_max_id += 1;
-        id
     }
 }
 
@@ -284,14 +276,25 @@ fn control(game: &mut Game) {
     game.logics.control.update(&());
 
     game.tables
-        .update_single::<CtrlEvent>(QueryType::CtrlEvent, game.logics.control.get_table())
-        .unwrap();
-    game.tables
         .update_single::<CtrlIdent>(QueryType::CtrlIdent, game.logics.control.get_table())
         .unwrap();
-
-    if let Some(control_fn) = game.events.control.clone() {
-        control_fn(game);
+    let events = game
+        .tables
+        .update_single::<CtrlEvent>(QueryType::CtrlEvent, game.logics.control.get_table())
+        .unwrap();
+    for e in events.iter() {
+        for (event_data, engine_action) in game.events.control.iter() {
+            match event_data {
+                EngineCtrlEvents::MovePaddle(paddle, id) => {
+                    if e.action_id == *id {
+                        engine_action.perform_action(&mut game.state, &mut game.logics);
+                    }
+                }
+                EngineCtrlEvents::ServePressed(paddle, id) => {
+                    // todo
+                }
+            }
+        }
     }
 }
 
@@ -314,10 +317,6 @@ fn physics(game: &mut Game) {
         game.logics
             .collision
             .handle_predicate(&CollisionReaction::SetPos(idx, data.pos));
-    }
-
-    if let Some(physics_fn) = game.events.physics.clone() {
-        physics_fn(game);
     }
 }
 
@@ -348,10 +347,6 @@ fn collision(game: &mut Game) {
             .physics
             .handle_predicate(&PhysicsReaction::SetPos(idx, data.center - data.half_size));
     }
-
-    if let Some(collision_fn) = game.events.collision.clone() {
-        collision_fn(game);
-    }
 }
 
 fn resources(game: &mut Game) {
@@ -363,10 +358,6 @@ fn resources(game: &mut Game) {
     game.tables
         .update_single::<RsrcIdent>(QueryType::RsrcIdent, game.logics.resources.get_table())
         .unwrap();
-
-    if let Some(resource_fn) = game.events.resources.clone() {
-        resource_fn(game);
-    }
 }
 
 pub fn draw(game: &mut Game) {

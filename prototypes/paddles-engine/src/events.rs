@@ -1,17 +1,78 @@
-use std::rc::Rc;
+use asterism::Logic;
+use macroquad::math::Vec2;
 
+#[derive(Clone, Copy)]
+pub enum EngineCtrlEvents {
+    MovePaddle(usize, crate::types::ActionID),
+    ServePressed(usize, crate::types::ActionID),
+}
+
+#[derive(Clone, Copy)]
+pub enum EngineCollisionEvents {
+    BallPaddleCollide { ball: usize, paddle: usize },
+    BallWallCollide { ball: usize, wall: usize },
+    BallScoreWallCollide { ball: usize, score: usize },
+}
+
+#[derive(Clone)]
+pub enum EngineActions {
+    BounceBall(usize, usize), // idx of paddle, then ball
+    ServeBall(usize, usize),  // idx of paddle, then ball
+    MovePaddle(usize, Vec2),
+    MoveBall(usize, Vec2), // ball idx
+    RemoveEntity(usize),
+    AddEntity(crate::Ent),
+    ChangeScore(usize, u16), // score idx, val
+}
+
+impl EngineActions {
+    pub(crate) fn perform_action(&self, state: &mut crate::State, logics: &mut crate::Logics) {
+        match self {
+            Self::BounceBall(i, j) => {
+                let id = state.get_id(*i);
+                if let crate::EntID::Ball(ball_id) = id {
+                    let sides_touched = logics.collision.sides_touched(*i, *j);
+                    let mut vals = logics.physics.get_ident_data(ball_id.idx());
+                    if sides_touched.y != 0.0 {
+                        vals.vel.y *= -1.0;
+                    }
+                    if sides_touched.x != 0.0 {
+                        vals.vel.x *= -1.0;
+                    }
+                    logics.physics.update_ident_data(ball_id.idx(), vals);
+                }
+            }
+            Self::ChangeScore(score, val) => {
+                logics.resources.handle_predicate(&(
+                    // i think this logic is wrong, but that's the fault of past me when they
+                    // decided to make this stuff so *convoluted*
+                    crate::RsrcPool::Score(state.scores[*score]),
+                    asterism::resources::Transaction::Change(*val),
+                ));
+            }
+            _ => {}
+        }
+    }
+}
+
+#[allow(clippy::type_complexity)]
 pub struct Events {
-    pub queries_max_id: usize,
-    pub control: Option<Rc<dyn Fn(&mut crate::Game)>>,
-    pub physics: Option<Rc<dyn Fn(&mut crate::Game)>>,
-    pub collision: Option<Rc<dyn Fn(&mut crate::Game)>>,
-    pub resources: Option<Rc<dyn Fn(&mut crate::Game)>>,
+    pub(crate) control: Vec<(EngineCtrlEvents, EngineActions)>,
+    pub(crate) collision: Vec<(EngineCollisionEvents, EngineActions)>,
 }
 
 impl Events {
     pub fn new() -> Self {
         Self {
-            queries_max_id: 0,
+            control: Vec::new(),
+            collision: Vec::new(),
+        }
+    }
+}
+
+/* impl Events {
+    pub fn new() -> Self {
+        Self {
             control: None,
             physics: None,
             collision: None,
@@ -124,13 +185,14 @@ macro_rules! rules {
     ) => {
         {
             use std::rc::Rc;
-            trait PaddlesUserEvents: $crate::PaddlesGame {
+            trait PaddlesUserEvents {
                 fn setup(&mut self, setup: Rc<dyn Fn(&mut Self)>);
                 fn control(&mut self, control: Rc<dyn Fn(&mut Self)>);
                 fn collision(&mut self, collision: Rc<dyn Fn(&mut Self)>);
                 fn resources(&mut self, resources: Rc<dyn Fn(&mut Self)>);
                 fn physics(&mut self, physics: Rc<dyn Fn(&mut Self)>);
             }
+
             impl PaddlesUserEvents for $crate::Game {
                 fn setup(&mut self, setup: Rc<dyn Fn(&mut $crate::Game)>) {
                     setup(self);
@@ -176,4 +238,4 @@ macro_rules! rules {
             $game.resources(resources);
         }
     };
-}
+} */
