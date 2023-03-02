@@ -35,7 +35,7 @@ macro_rules! id_impl_new {
     };
 }
 
-id_impl_new!([] PaddleID, [] WallID, [] BallID, [derive(PartialOrd, Ord, Debug)] ScoreID, [derive(PartialOrd, Ord, Debug)] ActionID, [derive(Hash, Debug)] UserQueryID);
+id_impl_new!([] PaddleID, [] WallID, [] BallID, [derive(PartialOrd, Ord, Debug)] ScoreID, [derive(PartialOrd, Ord, Debug)] ActionID);
 
 #[derive(Hash, Eq, PartialEq, Debug, Clone, Copy)]
 #[allow(dead_code)]
@@ -49,7 +49,6 @@ pub enum QueryType {
     RsrcEvent,
     RsrcIdent,
     BallCol,
-    User(UserQueryID),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -64,6 +63,7 @@ pub enum RsrcPool {
     Score(ScoreID),
 }
 
+#[derive(Clone)]
 pub struct Paddle {
     pub pos: Vec2,
     pub size: Vec2,
@@ -86,6 +86,7 @@ impl Paddle {
     }
 }
 
+#[derive(Copy, Clone)]
 pub struct Ball {
     pub pos: Vec2,
     pub size: Vec2,
@@ -102,6 +103,7 @@ impl Ball {
     }
 }
 
+#[derive(Copy, Clone)]
 pub struct Wall {
     pub pos: Vec2,
     pub size: Vec2,
@@ -113,7 +115,7 @@ impl Wall {
     }
 }
 
-#[derive(Default)]
+#[derive(Copy, Clone)]
 pub struct Score {
     pub value: u16,
 }
@@ -121,12 +123,8 @@ pub struct Score {
 impl Score {
     pub(crate) const MIN: u16 = 0;
     pub(crate) const MAX: u16 = u16::MAX;
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn set_value(&mut self, value: u16) {
-        self.value = value;
+    pub fn new(value: u16) -> Self {
+        Self { value }
     }
 }
 

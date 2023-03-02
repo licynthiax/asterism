@@ -83,7 +83,7 @@ fn init(game: &mut Game) {
     let action_serve = paddle.add_control_map(KeyCode::Space, true);
     game.add_paddle(paddle);
 
-    let score = game.add_score(Score::new());
+    let score = game.add_score(Score::new(0));
 
     let reset_game = move |state: &mut State, logics: &mut Logics| {
         let blocks = state.walls()[4..].to_vec();

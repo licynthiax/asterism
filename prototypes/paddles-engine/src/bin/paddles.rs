@@ -85,8 +85,8 @@ fn init(game: &mut Game) {
     let action_i = paddle2.add_control_map(KeyCode::I, false);
     game.add_paddle(paddle2);
 
-    let score1 = game.add_score(Score::new());
-    let score2 = game.add_score(Score::new());
+    let score1 = game.add_score(Score::new(0));
+    let score2 = game.add_score(Score::new(0));
 
     // expands to a match statement mapping the values 0, 1 to the two inputs given
     //

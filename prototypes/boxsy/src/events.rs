@@ -1,3 +1,4 @@
+#![allow(clippy::type_complexity)]
 use crate::types::*;
 use crate::{Game, Logics, State};
 use asterism::{
@@ -18,7 +19,7 @@ pub(crate) struct Events {
     pub collision: Vec<PredicateFn<(ColEvent, usize)>>, // usize is the current room number
     pub linking: Vec<PredicateFn<LinkingEvent>>,
     pub resource_event: Vec<PredicateFn<RsrcEvent>>,
-    #[allow(clippy::type_complexity)]
+    #[allow(dead_code)]
     pub resource_ident: Vec<PredicateFn<(RsrcID, (u16, u16, u16))>>,
 }
 
@@ -86,7 +87,6 @@ impl Game {
         self.events.linking.push((query_id, event, when_traversed));
     }
 
-    #[allow(clippy::type_complexity)]
     pub fn add_collision_predicate(
         &mut self,
         col_event: ColEvent,
