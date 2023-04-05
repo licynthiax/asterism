@@ -6,27 +6,27 @@
 //!
 //! The descriptions of logics in the modules are lightly modified from Prof Osborn's dissertation.
 //!
-//! Requires at least Rust 1.51---if this doesn't compile, update your rustc.
+//! Requires at least Rust 1.68---if this doesn't compile, update your rustc.
+
 #![allow(clippy::new_without_default)]
 #![allow(clippy::upper_case_acronyms)]
 pub mod collision;
-pub mod control;
-pub mod entity_state;
-pub mod graph;
-pub mod linking;
-pub mod physics;
-pub mod resources;
-pub mod tables;
+// pub mod control;
+// pub mod entity_state;
+// pub mod graph;
+// pub mod linking;
+// pub mod physics;
+// pub mod resources;
+// pub mod tables;
+
+mod lending_iterator;
 
 pub mod graphics;
 
-pub use tables::OutputTable;
+use lending_iterator::LendingIterator;
 
 /// An operational logic
-pub trait Logic:
-    OutputTable<(<Self as Logic>::Ident, <Self as Logic>::IdentData)>
-    + OutputTable<<Self as Logic>::Event>
-{
+pub trait Logic {
     /// the events that this logic can generate
     type Event: Event + Copy;
     /// the reactions that this logic can act on
@@ -35,7 +35,17 @@ pub trait Logic:
     /// a single unit/entity within the logic
     type Ident: Copy;
     /// the data of the logic associated with its identity (`<Self as Logic>::Ident`).
-    type IdentData: Clone;
+    type IdentData;
+
+    type DataIter<'a>: LendingIterator<
+        Item<'a> = (<Self as Logic>::Ident, <Self as Logic>::IdentData),
+    >
+    where
+        Self: 'a;
+
+    type EventIter<'a>: LendingIterator<Item<'a> = <Self as Logic>::Event>
+    where
+        Self: 'a;
 
     /// processes the reaction if a predicate condition is met
     fn handle_predicate(&mut self, reaction: &Self::Reaction);
@@ -45,6 +55,9 @@ pub trait Logic:
 
     /// updates the data of a unit of the logic
     fn update_ident_data(&mut self, ident: Self::Ident, data: Self::IdentData);
+
+    fn data_iter<'a>(&mut self) -> Self::DataIter<'a>;
+    fn event_iter<'a>(&mut self) -> Self::EventIter<'a>;
 }
 
 /// An event produced by the logic. Holds both the data associated with the event and information about what the event is---these should be separated for easier matching.

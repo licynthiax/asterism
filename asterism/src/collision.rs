@@ -4,7 +4,7 @@
 //!
 //! Note: Collision is hard and may be broken.
 
-use crate::{tables::OutputTable, Event, EventType, Logic, Reaction};
+use crate::{Event, EventType, LendingIterator, Logic, Reaction};
 use macroquad::math::Vec2;
 
 /// Information for each contact. If the entities at the indices `i` and `j` are both unfixed or both fixed, then `i < j`. If one is unfixed and the other is fixed, `i` will be the index of the unfixed entity.
@@ -227,12 +227,15 @@ pub struct AabbColData<ID: Copy + Eq> {
     pub id: ID,
 }
 
-impl<ID: Copy + Eq> Logic for AabbCollision<ID> {
+impl<ID: Copy + Eq + 'static> Logic for AabbCollision<ID> {
     type Event = CollisionEvent;
     type Reaction = CollisionReaction<ID>;
 
     type Ident = usize;
     type IdentData = AabbColData<ID>;
+
+    type DataIter<'logic> = ColDataIter<'logic, ID> where Self: 'logic;
+    type EventIter<'logic> = ColEventIter<'logic, ID> where Self: 'logic;
 
     fn handle_predicate(&mut self, reaction: &Self::Reaction) {
         match reaction {
@@ -292,6 +295,13 @@ impl<ID: Copy + Eq> Logic for AabbCollision<ID> {
         self.metadata[ident].fixed = data.fixed;
         self.metadata[ident].solid = data.solid;
     }
+
+    fn data_iter<'logic>(&mut self) -> Self::DataIter<'logic> {
+        todo!()
+    }
+    fn event_iter<'logic>(&mut self) -> Self::EventIter<'logic> {
+        todo!()
+    }
 }
 
 #[derive(PartialEq, Clone, Copy, Debug)]
@@ -337,10 +347,71 @@ pub enum CollisionEventType {
 
 impl EventType for CollisionEventType {}
 
-type QueryIdent<ID> = (
-    <AabbCollision<ID> as Logic>::Ident,
-    <AabbCollision<ID> as Logic>::IdentData,
+pub struct ColDataIter<'col, ID>
+where
+    ID: Copy + Eq,
+{
+    collision: &'col mut AabbCollision<ID>,
+    count: usize,
+}
+
+impl<'logic, ID> LendingIterator for ColDataIter<'logic, ID>
+where
+    ID: Copy + Eq + 'static,
+{
+    type Item<'a> = (
+        <AabbCollision<ID> as Logic>::Ident,
+        <AabbCollision<ID> as Logic>::IdentData
+    )
+    where
+        Self: 'a;
+
+    fn next<'a>(&mut self) -> &mut Option<Self::Item<'a>>
+    where
+        Self: 'a,
+    {
+        self.count += 1;
+        if self.count == self.collision.centers.len() {
+            &mut None
+        } else {
+            &mut Some((
+                self.count - 1,
+                self.collision.get_ident_data(self.count - 1),
+            ))
+        }
+    }
+}
+
+pub struct ColEventIter<'col, ID>
+where
+    ID: Copy + Eq,
+{
+    collision: &'col mut AabbCollision<ID>,
+    count: usize,
+}
+
+impl<'col, ID> LendingIterator for ColEventIter<'col, ID>
+where
+    ID: Copy + Eq + 'static,
+{
+    type Item<'a> = <AabbCollision<ID> as Logic>::Event
+    where
+        Self: 'a;
+
+    fn next<'a>(&mut self) -> &mut Option<Self::Item<'a>>
+    where
+        Self: 'a,
+    {
+        todo!()
+    }
+}
+
+/* type QueryIdent<'a, ID> = (
+    <AabbCollision<ID> as Logic<'a>>::Ident,
+    <AabbCollision<ID> as Logic<'a>>::IdentData,
 );
+
+
 
 impl<ID: Copy + Eq> OutputTable<QueryIdent<ID>> for AabbCollision<ID> {
     fn get_table(&self) -> Vec<QueryIdent<ID>> {
@@ -357,7 +428,7 @@ impl<ID: Copy + Eq> OutputTable<(usize, usize)> for AabbCollision<ID> {
             .map(|contact| (contact.i, contact.j))
             .collect()
     }
-}
+} */
 
 // inlined for performance
 #[inline(always)]

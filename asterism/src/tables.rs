@@ -8,11 +8,6 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 
-/// Builds output tables based on output of logics
-pub trait OutputTable<ProcessOutput> {
-    fn get_table(&self) -> Vec<ProcessOutput>;
-}
-
 /// holds logics' output tables and outputs of [processing][Compose]. Each compose processes one or two previous queries' output, then outputs them into another table. Ex: where `composes.get(&query3) == Compose::Zip(query1, query2)`, `query_output.get(&query3)` would be `query1` and `query2`'s output zipped together and copied to a new table. You could then further filter on the output of query3: `Compose::Filter(query3)`.
 ///
 /// performance: does a lot of copying/reallocating every function call. works for now but might want to revisit in the future
