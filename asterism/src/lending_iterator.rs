@@ -3,5 +3,5 @@ pub trait LendingIterator {
     where
         Self: 'a;
 
-    fn next<'a>(&mut self) -> &mut Option<Self::Item<'a>>;
+    fn next<'a>(&'a mut self) -> Option<Self::Item<'a>>;
 }

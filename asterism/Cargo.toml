@@ -7,7 +7,7 @@ edition = "2018"
 
 [dependencies]
 macroquad = "0.3.4"
-anycollections = "0.2.0"
+# anycollections = "0.2.0"
 futures = "0.3.17"
 
 # might feature gate this

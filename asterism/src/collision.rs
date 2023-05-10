@@ -218,21 +218,19 @@ impl<ID: Copy + Eq> AabbCollision<ID> {
 }
 
 #[derive(Clone)]
-pub struct AabbColData<ID: Copy + Eq> {
-    pub center: Vec2,
-    pub half_size: Vec2,
-    pub vel: Vec2,
-    pub fixed: bool,
-    pub solid: bool,
-    pub id: ID,
+pub struct AabbColData<'data, ID: Copy + Eq> {
+    pub center: &'data Vec2,
+    pub half_size: &'data Vec2,
+    pub vel: &'data Vec2,
+    pub meta: &'data CollisionData<ID>,
 }
 
 impl<ID: Copy + Eq + 'static> Logic for AabbCollision<ID> {
-    type Event = CollisionEvent;
+    type Event = Contact;
     type Reaction = CollisionReaction<ID>;
 
     type Ident = usize;
-    type IdentData = AabbColData<ID>;
+    type IdentData<'logic> = AabbColData<'logic, ID>;
 
     type DataIter<'logic> = ColDataIter<'logic, ID> where Self: 'logic;
     type EventIter<'logic> = ColEventIter<'logic, ID> where Self: 'logic;
@@ -277,23 +275,13 @@ impl<ID: Copy + Eq + 'static> Logic for AabbCollision<ID> {
         }
     }
 
-    fn get_ident_data(&self, ident: Self::Ident) -> Self::IdentData {
+    fn get_ident_data<'logic>(&'logic mut self, ident: Self::Ident) -> Self::IdentData<'logic> {
         AabbColData {
-            center: self.centers[ident],
-            half_size: self.half_sizes[ident],
-            vel: self.velocities[ident],
-            fixed: self.metadata[ident].fixed,
-            solid: self.metadata[ident].solid,
-            id: self.metadata[ident].id,
+            center: &mut self.centers[ident],
+            half_size: &mut self.half_sizes[ident],
+            vel: &mut self.velocities[ident],
+            meta: &mut self.metadata[ident],
         }
-    }
-
-    fn update_ident_data(&mut self, ident: Self::Ident, data: Self::IdentData) {
-        self.centers[ident] = data.center;
-        self.half_sizes[ident] = data.half_size;
-        self.velocities[ident] = data.vel;
-        self.metadata[ident].fixed = data.fixed;
-        self.metadata[ident].solid = data.solid;
     }
 
     fn data_iter<'logic>(&mut self) -> Self::DataIter<'logic> {
@@ -327,10 +315,7 @@ pub enum CollisionReaction<ID> {
 
 impl<ID> Reaction for CollisionReaction<ID> {}
 
-/// the indices of the two collision bodies involved in the contact.
-pub type CollisionEvent = (usize, usize);
-
-impl Event for CollisionEvent {
+impl Event for Contact {
     type EventType = CollisionEventType;
 
     fn get_type(&self) -> &Self::EventType {
@@ -361,20 +346,17 @@ where
 {
     type Item<'a> = (
         <AabbCollision<ID> as Logic>::Ident,
-        <AabbCollision<ID> as Logic>::IdentData
+        <AabbCollision<ID> as Logic>::IdentData<'a>
     )
     where
         Self: 'a;
 
-    fn next<'a>(&mut self) -> &mut Option<Self::Item<'a>>
-    where
-        Self: 'a,
-    {
+    fn next<'a>(&'a mut self) -> Option<Self::Item<'a>> {
         self.count += 1;
         if self.count == self.collision.centers.len() {
-            &mut None
+            None
         } else {
-            &mut Some((
+            Some((
                 self.count - 1,
                 self.collision.get_ident_data(self.count - 1),
             ))
@@ -394,15 +376,17 @@ impl<'col, ID> LendingIterator for ColEventIter<'col, ID>
 where
     ID: Copy + Eq + 'static,
 {
-    type Item<'a> = <AabbCollision<ID> as Logic>::Event
+    type Item<'a> = &'a mut <AabbCollision<ID> as Logic>::Event
     where
         Self: 'a;
 
-    fn next<'a>(&mut self) -> &mut Option<Self::Item<'a>>
-    where
-        Self: 'a,
-    {
-        todo!()
+    fn next<'a>(&'a mut self) -> Option<Self::Item<'a>> {
+        self.count += 1;
+        if self.count == self.collision.contacts.len() {
+            None
+        } else {
+            Some(&mut self.collision.contacts[self.count])
+        }
     }
 }
 

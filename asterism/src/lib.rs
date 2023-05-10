@@ -10,6 +10,7 @@
 
 #![allow(clippy::new_without_default)]
 #![allow(clippy::upper_case_acronyms)]
+// need to reimplement logic/event structs + iterators for the rest of these modules ^_^)-b
 pub mod collision;
 // pub mod control;
 // pub mod entity_state;
@@ -17,7 +18,6 @@ pub mod collision;
 // pub mod linking;
 // pub mod physics;
 // pub mod resources;
-// pub mod tables;
 
 mod lending_iterator;
 
@@ -35,15 +35,17 @@ pub trait Logic {
     /// a single unit/entity within the logic
     type Ident: Copy;
     /// the data of the logic associated with its identity (`<Self as Logic>::Ident`).
-    type IdentData;
+    type IdentData<'logic>
+    where
+        Self: 'logic;
 
-    type DataIter<'a>: LendingIterator<
-        Item<'a> = (<Self as Logic>::Ident, <Self as Logic>::IdentData),
+    type DataIter<'logic>: LendingIterator<
+        Item<'logic> = (<Self as Logic>::Ident, <Self as Logic>::IdentData<'logic>),
     >
     where
-        Self: 'a;
+        Self: 'logic;
 
-    type EventIter<'a>: LendingIterator<Item<'a> = <Self as Logic>::Event>
+    type EventIter<'a>: LendingIterator<Item<'a> = &'a mut <Self as Logic>::Event>
     where
         Self: 'a;
 
@@ -51,10 +53,7 @@ pub trait Logic {
     fn handle_predicate(&mut self, reaction: &Self::Reaction);
 
     /// exposes the data associated with a particular ""entity"" of the logic. NOTE that modifying the data returned here does NOT change the logic's data!!!
-    fn get_ident_data(&self, ident: Self::Ident) -> Self::IdentData;
-
-    /// updates the data of a unit of the logic
-    fn update_ident_data(&mut self, ident: Self::Ident, data: Self::IdentData);
+    fn get_ident_data<'logic>(&'logic mut self, ident: Self::Ident) -> Self::IdentData<'logic>;
 
     fn data_iter<'a>(&mut self) -> Self::DataIter<'a>;
     fn event_iter<'a>(&mut self) -> Self::EventIter<'a>;
