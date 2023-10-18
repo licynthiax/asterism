@@ -3,20 +3,22 @@
 //! Entity-state logics communicate that game entities act in different ways or have different capabilities at different times, in ways that are intrinsic to each such entity. They govern the finite, discrete states of a set of game characters or other entities, update states when necessary, and condition the operators of other logics on entities' discrete states.
 
 use crate::graph::StateMachine;
-use crate::{tables::OutputTable, Event, EventType, Logic, Reaction};
+use crate::{Event, EventType, LendingIterator, Logic, Reaction};
 
 /// An entity-state logic for flat entity state machines.
 pub struct FlatEntityState<ID: Copy + Eq> {
     /// A vec of state machines
     pub graphs: Vec<StateMachine<ID>>,
     pub just_traversed: Vec<bool>,
+    events: Vec<EntityEvent>,
 }
 
-impl<ID: Copy + Eq> FlatEntityState<ID> {
+impl<ID: Copy + Eq + 'static> FlatEntityState<ID> {
     pub fn new() -> Self {
         Self {
             graphs: Vec::new(),
             just_traversed: Vec::new(),
+            events: Vec::new(),
         }
     }
 
@@ -25,11 +27,41 @@ impl<ID: Copy + Eq> FlatEntityState<ID> {
     /// Check the status of all the links from the current node in the condition table. If any of those links are `true`, i.e. that node can be moved to, move the current position.
     pub fn update(&mut self) {
         self.just_traversed.fill(false);
-        for (graph, traversed) in self.graphs.iter_mut().zip(self.just_traversed.iter_mut()) {
-            for i in graph.graph.get_edges(graph.current_node) {
-                if graph.conditions[i] {
-                    graph.current_node = i;
+        self.events.clear();
+
+        for (i, (graph, traversed)) in self
+            .graphs
+            .iter_mut()
+            .zip(self.just_traversed.iter_mut())
+            .enumerate()
+        {
+            let mut activated = graph
+                .conditions
+                .iter()
+                .enumerate()
+                .filter_map(|(node, activated)| {
+                    if *activated {
+                        Some(EntityEvent {
+                            graph: i,
+                            node,
+                            event_type: EntityEventType::Activated,
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            self.events.append(&mut activated);
+
+            for edge in graph.graph.get_edges(graph.current_node) {
+                if graph.conditions[edge] {
+                    graph.current_node = edge;
                     *traversed = true;
+                    self.events.push(EntityEvent {
+                        graph: i,
+                        node: edge,
+                        event_type: EntityEventType::Traversed,
+                    });
                     break;
                 }
             }
@@ -105,14 +137,17 @@ pub enum EntityReaction {
 
 impl Reaction for EntityReaction {}
 
-impl<ID: Copy + Eq> Logic for FlatEntityState<ID> {
+impl<ID: Copy + Eq + 'static> Logic for FlatEntityState<ID> {
     type Event = EntityEvent;
     type Reaction = EntityReaction;
 
     /// index of graph
     type Ident = usize;
     /// current position in logic
-    type IdentData = ID;
+    type IdentData<'a> = ID where Self: 'a;
+
+    type DataIter<'logic> = FesDataIter<'logic, ID> where Self: 'logic;
+    type EventIter<'logic> = FesEventIter<'logic, ID> where Self: 'logic;
 
     fn handle_predicate(&mut self, reaction: &Self::Reaction) {
         match reaction {
@@ -124,61 +159,78 @@ impl<ID: Copy + Eq> Logic for FlatEntityState<ID> {
         }
     }
 
-    fn get_ident_data(&self, ident: Self::Ident) -> Self::IdentData {
+    fn get_ident_data(&mut self, ident: Self::Ident) -> Self::IdentData<'_> {
         self.graphs[ident].get_current_node()
     }
 
-    fn update_ident_data(&mut self, ident: Self::Ident, data: Self::IdentData) {
-        let graph = &mut self.graphs[ident];
-        let node = graph.graph.nodes.iter().position(|id| *id == data);
-        if let Some(idx) = node {
-            graph.current_node = idx;
+    fn data_iter(&mut self) -> Self::DataIter<'_> {
+        Self::DataIter {
+            ent_state: self,
+            count: 0,
+        }
+    }
+    fn event_iter(&self) -> Self::EventIter<'_> {
+        Self::EventIter {
+            ent_state: self,
+            count: 0,
         }
     }
 }
 
-type QueryIdent<ID> = (
-    <FlatEntityState<ID> as Logic>::Ident,
-    <FlatEntityState<ID> as Logic>::IdentData,
-);
-impl<ID: Copy + Eq> OutputTable<QueryIdent<ID>> for FlatEntityState<ID> {
-    fn get_table(&self) -> Vec<QueryIdent<ID>> {
-        (0..self.graphs.len())
-            .map(|idx| (idx, self.get_ident_data(idx)))
-            .collect()
+pub struct FesDataIter<'logic, ID>
+where
+    ID: Copy + Eq + 'static,
+{
+    ent_state: &'logic mut FlatEntityState<ID>,
+    count: usize,
+}
+
+impl<'logic, ID> LendingIterator for FesDataIter<'logic, ID>
+where
+    ID: Copy + Eq + 'static,
+{
+    type Item<'a> = (
+        <FlatEntityState<ID> as Logic>::Ident,
+        <FlatEntityState<ID> as Logic>::IdentData<'a>
+    )
+    where
+        Self: 'a;
+
+    fn next(&mut self) -> Option<Self::Item<'_>> {
+        self.count += 1;
+        if self.count == self.ent_state.graphs.len() {
+            None
+        } else {
+            Some((
+                self.count - 1,
+                self.ent_state.get_ident_data(self.count - 1),
+            ))
+        }
     }
 }
 
-type QueryEvent<ID> = <FlatEntityState<ID> as Logic>::Event;
+pub struct FesEventIter<'logic, ID>
+where
+    ID: Copy + Eq + 'static,
+{
+    ent_state: &'logic FlatEntityState<ID>,
+    count: usize,
+}
 
-impl<ID: Copy + Eq> OutputTable<QueryEvent<ID>> for FlatEntityState<ID> {
-    fn get_table(&self) -> Vec<QueryEvent<ID>> {
-        let mut events = Vec::new();
-        for (i, (graph, traversed)) in self
-            .graphs
-            .iter()
-            .zip(self.just_traversed.iter())
-            .enumerate()
-        {
-            if *traversed {
-                let event = EntityEvent {
-                    graph: i,
-                    node: graph.current_node,
-                    event_type: EntityEventType::Traversed,
-                };
-                events.push(event);
-            }
-            for (node, activated) in graph.conditions.iter().enumerate() {
-                if *activated && node != graph.current_node {
-                    let event = EntityEvent {
-                        graph: i,
-                        node,
-                        event_type: EntityEventType::Activated,
-                    };
-                    events.push(event);
-                }
-            }
+impl<'logic, ID> LendingIterator for FesEventIter<'logic, ID>
+where
+    ID: Copy + Eq + 'static,
+{
+    type Item<'a> = &'a EntityEvent
+    where
+        Self: 'a;
+
+    fn next(&mut self) -> Option<Self::Item<'_>> {
+        self.count += 1;
+        if self.count == self.ent_state.events.len() {
+            None
+        } else {
+            Some(&self.ent_state.events[self.count - 1])
         }
-        events
     }
 }
