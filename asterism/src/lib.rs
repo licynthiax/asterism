@@ -10,9 +10,9 @@
 
 #![allow(clippy::new_without_default)]
 #![allow(clippy::upper_case_acronyms)]
-// TODO: reimplement logic/event structs + iterators for the rest of these modules ^_^)-b
 pub mod collision;
-// pub mod control;
+pub mod control;
+// TODO: reimplement logic/event structs + iterators for the rest of these modules ^_^)-b
 // pub mod entity_state;
 // pub mod graph;
 // pub mod linking;
