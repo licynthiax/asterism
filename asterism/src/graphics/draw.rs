@@ -97,7 +97,7 @@ impl Drawable {
                     ..Default::default()
                 };
                 let tex = textures.get_texture(*sprite);
-                texture::draw_texture_ex(*tex, rect.x, rect.y, BLACK, params);
+                texture::draw_texture_ex(tex, rect.x, rect.y, BLACK, params);
             }
             Drawable::Animation(rect, anim) => {
                 let params = DrawTextureParams {
@@ -116,7 +116,7 @@ impl Drawable {
                     anim.current_frame.1 += 1;
                 }
 
-                texture::draw_texture_ex(*tex, rect.x, rect.y, BLACK, params);
+                texture::draw_texture_ex(tex, rect.x, rect.y, BLACK, params);
             }
         }
     }
@@ -159,7 +159,6 @@ impl Textures {
             .tex
             .remove(&id)
             .unwrap_or_else(|| panic!("texture id {} doesn't match any loaded texture", id.0));
-        tex.delete()
     }
 }
 
