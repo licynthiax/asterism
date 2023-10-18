@@ -6,7 +6,7 @@ authors = ["Cynthia Li", "Katiana Wieser", "Julie Ye", "Joe Osborn"]
 edition = "2018"
 
 [dependencies]
-macroquad = "0.3.4"
+macroquad = "0.4.4"
 anycollections = "0.2.0"
 futures = "0.3.17"
 
