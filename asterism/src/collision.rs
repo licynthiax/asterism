@@ -275,7 +275,7 @@ impl<ID: Copy + Eq + 'static> Logic for AabbCollision<ID> {
         }
     }
 
-    fn get_ident_data<'logic>(&'logic mut self, ident: Self::Ident) -> Self::IdentData<'logic> {
+    fn get_ident_data(&mut self, ident: Self::Ident) -> Self::IdentData<'_> {
         AabbColData {
             center: &mut self.centers[ident],
             half_size: &mut self.half_sizes[ident],
@@ -284,11 +284,17 @@ impl<ID: Copy + Eq + 'static> Logic for AabbCollision<ID> {
         }
     }
 
-    fn data_iter<'logic>(&mut self) -> Self::DataIter<'logic> {
-        todo!()
+    fn data_iter(&mut self) -> Self::DataIter<'_> {
+        Self::DataIter {
+            collision: self,
+            count: 0,
+        }
     }
-    fn event_iter<'logic>(&mut self) -> Self::EventIter<'logic> {
-        todo!()
+    fn event_iter(&self) -> Self::EventIter<'_> {
+        Self::EventIter {
+            collision: self,
+            count: 0,
+        }
     }
 }
 
@@ -351,7 +357,7 @@ where
     where
         Self: 'a;
 
-    fn next<'a>(&'a mut self) -> Option<Self::Item<'a>> {
+    fn next(&mut self) -> Option<Self::Item<'_>> {
         self.count += 1;
         if self.count == self.collision.centers.len() {
             None
@@ -368,7 +374,7 @@ pub struct ColEventIter<'col, ID>
 where
     ID: Copy + Eq,
 {
-    collision: &'col mut AabbCollision<ID>,
+    collision: &'col AabbCollision<ID>,
     count: usize,
 }
 
@@ -376,43 +382,19 @@ impl<'col, ID> LendingIterator for ColEventIter<'col, ID>
 where
     ID: Copy + Eq + 'static,
 {
-    type Item<'a> = &'a mut <AabbCollision<ID> as Logic>::Event
+    type Item<'a> = &'a <AabbCollision<ID> as Logic>::Event
     where
         Self: 'a;
 
-    fn next<'a>(&'a mut self) -> Option<Self::Item<'a>> {
+    fn next(&mut self) -> Option<Self::Item<'_>> {
         self.count += 1;
         if self.count == self.collision.contacts.len() {
             None
         } else {
-            Some(&mut self.collision.contacts[self.count])
+            Some(&self.collision.contacts[self.count])
         }
     }
 }
-
-/* type QueryIdent<'a, ID> = (
-    <AabbCollision<ID> as Logic<'a>>::Ident,
-    <AabbCollision<ID> as Logic<'a>>::IdentData,
-);
-
-
-
-impl<ID: Copy + Eq> OutputTable<QueryIdent<ID>> for AabbCollision<ID> {
-    fn get_table(&self) -> Vec<QueryIdent<ID>> {
-        (0..self.centers.len())
-            .map(|idx| (idx, self.get_ident_data(idx)))
-            .collect()
-    }
-}
-
-impl<ID: Copy + Eq> OutputTable<(usize, usize)> for AabbCollision<ID> {
-    fn get_table(&self) -> Vec<(usize, usize)> {
-        self.contacts
-            .iter()
-            .map(|contact| (contact.i, contact.j))
-            .collect()
-    }
-} */
 
 // inlined for performance
 #[inline(always)]
