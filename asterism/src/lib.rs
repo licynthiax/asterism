@@ -9,7 +9,7 @@
 //! Requires at least Rust 1.51---if this doesn't compile, update your rustc.
 #![allow(clippy::new_without_default)]
 #![allow(clippy::upper_case_acronyms)]
-pub mod animation;
+// pub mod animation;
 pub mod collision;
 pub mod control;
 pub mod entity_state;
