@@ -55,13 +55,13 @@ impl<ID: Copy + Eq + 'static> FlatEntityState<ID> {
 
             for edge in graph.graph.get_edges(graph.current_node) {
                 if graph.conditions[edge] {
-                    graph.current_node = edge;
                     *traversed = true;
                     self.events.push(EntityEvent {
                         graph: i,
                         node: edge,
-                        event_type: EntityEventType::Traversed,
+                        event_type: EntityEventType::Traversed(graph.current_node),
                     });
+                    graph.current_node = edge;
                     break;
                 }
             }
@@ -119,7 +119,7 @@ pub struct EntityEvent {
 #[derive(Copy, Clone)]
 pub enum EntityEventType {
     Activated,
-    Traversed,
+    Traversed(usize), // last node (which edge)
 }
 impl EventType for EntityEventType {}
 
@@ -144,7 +144,7 @@ impl<ID: Copy + Eq + 'static> Logic for FlatEntityState<ID> {
     /// index of graph
     type Ident = usize;
     /// current position in logic
-    type IdentData<'a> = ID where Self: 'a;
+    type IdentData<'a> = &'a mut ID where Self: 'a;
 
     type DataIter<'logic> = FesDataIter<'logic, ID> where Self: 'logic;
     type EventIter<'logic> = FesEventIter<'logic, ID> where Self: 'logic;
@@ -160,7 +160,8 @@ impl<ID: Copy + Eq + 'static> Logic for FlatEntityState<ID> {
     }
 
     fn get_ident_data(&mut self, ident: Self::Ident) -> Self::IdentData<'_> {
-        self.graphs[ident].get_current_node()
+        let graph = &mut self.graphs[ident];
+        &mut graph.graph.nodes[graph.current_node]
     }
 
     fn data_iter(&mut self) -> Self::DataIter<'_> {

@@ -4,7 +4,7 @@
 //!
 //! Linking logics are incredibly broad and have a wide range of uses.
 use crate::graph::StateMachine;
-use crate::{tables::OutputTable, Event, EventType, Logic, Reaction};
+use crate::{Event, EventType, LendingIterator, Logic, Reaction};
 
 /// A generic linking logic. See [StateMachine][crate::graph::StateMachine] documentation for more information.
 ///
@@ -13,14 +13,16 @@ pub struct GraphedLinking<NodeID: Copy + Eq> {
     /// A vec of state machines
     pub graphs: Vec<StateMachine<NodeID>>,
     /// If the state machine has just traversed an edge or not
-    pub just_traversed: Vec<Option<usize>>,
+    pub just_traversed: Vec<bool>,
+    events: Vec<LinkingEvent>,
 }
 
-impl<NodeID: Copy + Eq> GraphedLinking<NodeID> {
+impl<NodeID: Copy + Eq + 'static> GraphedLinking<NodeID> {
     pub fn new() -> Self {
         Self {
             graphs: Vec::new(),
             just_traversed: Vec::new(),
+            events: Vec::new(),
         }
     }
 
@@ -28,11 +30,39 @@ impl<NodeID: Copy + Eq> GraphedLinking<NodeID> {
     ///
     /// Check the status of all the links from the current node in the condition table. If any of those links are `true`, i.e. that node can be moved to, move the current position.
     pub fn update(&mut self) {
-        self.just_traversed.fill(None);
-        for (graph, traversed) in self.graphs.iter_mut().zip(self.just_traversed.iter_mut()) {
-            for i in graph.graph.get_edges(graph.current_node) {
+        self.just_traversed.fill(false);
+        for (i, (graph, traversed)) in self
+            .graphs
+            .iter_mut()
+            .zip(self.just_traversed.iter_mut())
+            .enumerate()
+        {
+            let mut activated = graph
+                .conditions
+                .iter()
+                .enumerate()
+                .filter_map(|(node, activated)| {
+                    if *activated {
+                        Some(LinkingEvent {
+                            graph: i,
+                            node,
+                            event_type: LinkingEventType::Activated,
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            self.events.append(&mut activated);
+
+            for edge in graph.graph.get_edges(graph.current_node) {
                 if graph.conditions[i] {
-                    *traversed = Some(graph.current_node);
+                    *traversed = true;
+                    self.events.push(LinkingEvent {
+                        graph: i,
+                        node: edge,
+                        event_type: LinkingEventType::Traversed(graph.current_node),
+                    });
                     graph.current_node = i;
                     break;
                 }
@@ -62,7 +92,7 @@ impl<NodeID: Copy + Eq> GraphedLinking<NodeID> {
             }
         }
         self.graphs.push(graph);
-        self.just_traversed.push(None);
+        self.just_traversed.push(false);
     }
 }
 
@@ -98,81 +128,98 @@ pub enum LinkingReaction {
 
 impl Reaction for LinkingReaction {}
 
-impl<NodeID: Copy + Eq> Logic for GraphedLinking<NodeID> {
+impl<NodeID: Copy + Eq + 'static> Logic for GraphedLinking<NodeID> {
     type Event = LinkingEvent;
     type Reaction = LinkingReaction;
 
     /// index of graph
     type Ident = usize;
     /// list of graph nodes and edges
-    type IdentData = NodeID;
+    type IdentData<'a> = &'a mut NodeID where Self: 'a;
+
+    type DataIter<'logic> = LinkingDataIter<'logic, NodeID> where Self: 'logic;
+    type EventIter<'logic> = LinkingEventIter<'logic, NodeID> where Self: 'logic;
 
     fn handle_predicate(&mut self, reaction: &Self::Reaction) {
         match reaction {
             LinkingReaction::Activate(graph, node) => self.graphs[*graph].conditions[*node] = true,
             LinkingReaction::Traverse(graph, node) => {
-                self.just_traversed[*graph] = Some(self.graphs[*graph].current_node);
+                self.just_traversed[*graph] = true;
                 self.graphs[*graph].set_current_node(*node);
             }
         }
     }
 
-    fn get_ident_data(&self, ident: Self::Ident) -> Self::IdentData {
-        self.graphs[ident].get_current_node()
-    }
-
-    fn update_ident_data(&mut self, ident: Self::Ident, data: Self::IdentData) {
+    fn get_ident_data(&mut self, ident: Self::Ident) -> Self::IdentData<'_> {
         let graph = &mut self.graphs[ident];
-        let node = graph.graph.nodes.iter().position(|id| *id == data);
-        if let Some(idx) = node {
-            graph.current_node = idx;
+        &mut graph.graph.nodes[graph.current_node]
+    }
+
+    fn data_iter(&mut self) -> Self::DataIter<'_> {
+        Self::DataIter {
+            linking: self,
+            count: 0,
+        }
+    }
+    fn event_iter(&self) -> Self::EventIter<'_> {
+        Self::EventIter {
+            linking: self,
+            count: 0,
         }
     }
 }
 
-type QueryIdent<ID> = (
-    <GraphedLinking<ID> as Logic>::Ident,
-    <GraphedLinking<ID> as Logic>::IdentData,
-);
+pub struct LinkingDataIter<'logic, ID>
+where
+    ID: Copy + Eq + 'static,
+{
+    linking: &'logic mut GraphedLinking<ID>,
+    count: usize,
+}
 
-impl<ID: Copy + Eq> OutputTable<QueryIdent<ID>> for GraphedLinking<ID> {
-    fn get_table(&self) -> Vec<QueryIdent<ID>> {
-        (0..self.graphs.len())
-            .map(|idx| (idx, self.get_ident_data(idx)))
-            .collect()
+impl<'logic, ID> LendingIterator for LinkingDataIter<'logic, ID>
+where
+    ID: Copy + Eq + 'static,
+{
+    type Item<'a> = (
+        <GraphedLinking<ID> as Logic>::Ident,
+        <GraphedLinking<ID> as Logic>::IdentData<'a>
+    )
+    where
+        Self: 'a;
+
+    fn next(&mut self) -> Option<Self::Item<'_>> {
+        self.count += 1;
+        if self.count == self.linking.graphs.len() {
+            None
+        } else {
+            Some((self.count - 1, self.linking.get_ident_data(self.count - 1)))
+        }
     }
 }
 
-type QueryEvent<ID> = <GraphedLinking<ID> as Logic>::Event;
+pub struct LinkingEventIter<'logic, ID>
+where
+    ID: Copy + Eq + 'static,
+{
+    linking: &'logic GraphedLinking<ID>,
+    count: usize,
+}
 
-impl<ID: Copy + Eq> OutputTable<QueryEvent<ID>> for GraphedLinking<ID> {
-    fn get_table(&self) -> Vec<QueryEvent<ID>> {
-        let mut events = Vec::new();
-        for (i, (graph, traversed)) in self
-            .graphs
-            .iter()
-            .zip(self.just_traversed.iter())
-            .enumerate()
-        {
-            if let Some(last_node) = traversed {
-                let event = LinkingEvent {
-                    graph: i,
-                    node: graph.current_node,
-                    event_type: LinkingEventType::Traversed(*last_node),
-                };
-                events.push(event);
-            }
-            for (node, activated) in graph.conditions.iter().enumerate() {
-                if *activated && node != graph.current_node {
-                    let event = LinkingEvent {
-                        graph: i,
-                        node,
-                        event_type: LinkingEventType::Activated,
-                    };
-                    events.push(event);
-                }
-            }
+impl<'logic, ID> LendingIterator for LinkingEventIter<'logic, ID>
+where
+    ID: Copy + Eq + 'static,
+{
+    type Item<'a> = &'a LinkingEvent
+    where
+        Self: 'a;
+
+    fn next(&mut self) -> Option<Self::Item<'_>> {
+        self.count += 1;
+        if self.count == self.linking.events.len() {
+            None
+        } else {
+            Some(&self.linking.events[self.count - 1])
         }
-        events
     }
 }
