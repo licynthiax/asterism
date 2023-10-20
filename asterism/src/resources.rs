@@ -2,23 +2,29 @@
 //!
 //! Resource logics communicate that generic or specific resources can be created, destroyed, converted, or transferred between abstract or concrete locations. They create, destroy, and exchange (usually) discrete quantities of generic or specific resources in or between abstract or concrete locations on demand or over time, and trigger other actions when these transactions take place.
 
-use crate::{tables::OutputTable, Event, EventType, Logic, Reaction};
+use crate::{Event, EventType, LendingIterator, Logic, Reaction};
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign};
 
+pub struct PoolValues<Value> {
+    pub val: Value,
+    pub min: Value,
+    pub max: Value,
+}
+
 /// A resource logic that queues transactions, then applies them all at once when updating.
 pub struct QueuedResources<ID, Value>
 where
-    ID: Copy + Ord + Debug,
-    Value: Add<Output = Value> + AddAssign + Ord + Copy,
+    ID: Copy + Ord + Debug + 'static,
+    Value: Add<Output = Value> + AddAssign + Ord + Copy + 'static,
 {
-    /// The items involved, and their values.
-    pub items: BTreeMap<ID, (Value, Value, Value)>, // value, min, max
+    /// The items involved, and their values, as a tuple of (actual value, minimum value, maximum value).
+    pub items: BTreeMap<ID, PoolValues<Value>>,
     /// Each transaction is a list of items involved in the transaction and the amount they're being changed.
     pub transactions: Vec<(ID, Transaction<Value>)>,
-    /// A Vec of all transactions and if they were able to be completed or not. If yes, supply a Vec of the IDs of successful transactions; if no, supply the ID of the pool that caused the error and a reason (see [ResourceError]).
-    pub completed: Vec<Result<ID, (ID, ResourceError)>>,
+    /// A Vec of all transactions and if they were able to be completed or not. If not, also report an error (see [ResourceEvent] and [ResourceError]).
+    pub completed: Vec<ResourceEvent<ID>>,
 }
 
 impl<ID, Value> Logic for QueuedResources<ID, Value>
@@ -30,25 +36,28 @@ where
     type Reaction = ResourceReaction<ID, Value>;
 
     type Ident = ID;
-    type IdentData = (Value, Value, Value);
+    type IdentData<'a> = &'a mut PoolValues<Value> where Self: 'a;
+
+    type DataIter<'a> = RsrcDataIter<'a, ID, Value> where Self: 'a;
 
     fn handle_predicate(&mut self, reaction: &Self::Reaction) {
         self.transactions.push(*reaction);
     }
 
-    fn get_ident_data(&self, ident: Self::Ident) -> Self::IdentData {
-        *self
-            .items
-            .get(&ident)
+    fn get_ident_data(&mut self, ident: Self::Ident) -> Self::IdentData<'_> {
+        self.items
+            .get_mut(&ident)
             .unwrap_or_else(|| panic!("requested pool {:?} doesn't exist in resource logic", ident))
     }
 
-    fn update_ident_data(&mut self, ident: Self::Ident, data: Self::IdentData) {
-        let vals = self
-            .items
-            .get_mut(&ident)
-            .unwrap_or_else(|| panic!("pool {:?} not found", ident));
-        *vals = data;
+    fn data_iter(&mut self) -> Self::DataIter<'_> {
+        RsrcDataIter {
+            resources: self.items.iter_mut(),
+        }
+    }
+
+    fn events(&self) -> &[Self::Event] {
+        &self.completed
     }
 }
 
@@ -73,11 +82,14 @@ where
             let (item_type, change) = exchange;
 
             if let Err(err) = self.is_possible(item_type, change) {
-                self.completed.push(Err(err));
+                self.completed.push(ResourceEvent {
+                    pool: *item_type,
+                    event_type: ResourceEventType::TransactionUnsuccessful(err),
+                });
                 continue;
             }
 
-            let (val, min, max) = self.items.get_mut(item_type).unwrap();
+            let PoolValues { val, min, max } = self.items.get_mut(item_type).unwrap();
             match change {
                 Transaction::Change(amt) => {
                     *val += *amt;
@@ -92,7 +104,10 @@ where
                     *min = *new_min;
                 }
             }
-            self.completed.push(Ok(*item_type));
+            self.completed.push(ResourceEvent {
+                pool: *item_type,
+                event_type: ResourceEventType::PoolUpdated,
+            });
         }
         self.transactions.clear();
     }
@@ -102,14 +117,14 @@ where
         &self,
         item_type: &ID,
         transaction: &Transaction<Value>,
-    ) -> Result<(), (ID, ResourceError)> {
-        if let Some((value, min, max)) = self.items.get(item_type) {
+    ) -> Result<(), ResourceError> {
+        if let Some(PoolValues { val, min, max }) = self.items.get(item_type) {
             match transaction {
                 Transaction::Change(amt) => {
-                    if *value + *amt > *max {
-                        Err((*item_type, ResourceError::TooBig))
-                    } else if *value + *amt < *min {
-                        Err((*item_type, ResourceError::TooSmall))
+                    if *val + *amt > *max {
+                        Err(ResourceError::TooBig)
+                    } else if *val + *amt < *min {
+                        Err(ResourceError::TooSmall)
                     } else {
                         Ok(())
                     }
@@ -117,13 +132,13 @@ where
                 _ => Ok(()),
             }
         } else {
-            Err((*item_type, ResourceError::PoolNotFound))
+            Err(ResourceError::PoolNotFound)
         }
     }
 
     /// Gets the value of the item based on its ID.
     pub fn get_value_by_itemtype(&self, item_type: &ID) -> Option<Value> {
-        self.items.get(item_type).map(|(val, ..)| *val)
+        self.items.get(item_type).map(|PoolValues { val, .. }| *val)
     }
 }
 
@@ -172,42 +187,25 @@ impl<ID: Ord> Event for ResourceEvent<ID> {
     }
 }
 
-type QueryIdent<ID, Value> = (
-    <QueuedResources<ID, Value> as Logic>::Ident,
-    <QueuedResources<ID, Value> as Logic>::IdentData,
-);
-
-impl<ID, Value> OutputTable<QueryIdent<ID, Value>> for QueuedResources<ID, Value>
+pub struct RsrcDataIter<'rsrc, ID, Value>
 where
-    ID: Copy + Ord + Debug,
-    Value: Add<Output = Value> + AddAssign + Ord + Copy,
+    ID: Copy + Ord + Debug + 'static,
+    Value: Add<Output = Value> + AddAssign + Ord + Copy + 'static,
 {
-    fn get_table(&self) -> Vec<QueryIdent<ID, Value>> {
-        self.items
-            .keys()
-            .map(|id| (*id, self.get_ident_data(*id)))
-            .collect()
-    }
+    resources: std::collections::btree_map::IterMut<'rsrc, ID, PoolValues<Value>>,
 }
 
-impl<ID, Value> OutputTable<ResourceEvent<ID>> for QueuedResources<ID, Value>
+impl<'rsrc, ID, Value> LendingIterator for RsrcDataIter<'rsrc, ID, Value>
 where
-    ID: Copy + Ord + Debug,
-    Value: Add<Output = Value> + AddAssign + Ord + Copy,
+    ID: Copy + Ord + Debug + 'static,
+    Value: Add<Output = Value> + AddAssign + Ord + Copy + 'static,
 {
-    fn get_table(&self) -> Vec<ResourceEvent<ID>> {
-        self.completed
-            .iter()
-            .map(|completed| match completed {
-                Ok(id) => ResourceEvent {
-                    pool: *id,
-                    event_type: ResourceEventType::PoolUpdated,
-                },
-                Err((id, err)) => ResourceEvent {
-                    pool: *id,
-                    event_type: ResourceEventType::TransactionUnsuccessful(*err),
-                },
-            })
-            .collect()
+    type Item<'a> = (
+        <QueuedResources<ID, Value> as Logic>::Ident,
+        <QueuedResources<ID, Value> as Logic>::IdentData<'a>,
+    ) where Self: 'a;
+
+    fn next(&mut self) -> Option<Self::Item<'_>> {
+        self.resources.next().map(|(id, vals)| (*id, vals))
     }
 }
