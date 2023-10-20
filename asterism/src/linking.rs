@@ -138,7 +138,6 @@ impl<NodeID: Copy + Eq + 'static> Logic for GraphedLinking<NodeID> {
     type IdentData<'a> = &'a mut NodeID where Self: 'a;
 
     type DataIter<'logic> = LinkingDataIter<'logic, NodeID> where Self: 'logic;
-    type EventIter<'logic> = LinkingEventIter<'logic, NodeID> where Self: 'logic;
 
     fn handle_predicate(&mut self, reaction: &Self::Reaction) {
         match reaction {
@@ -161,11 +160,8 @@ impl<NodeID: Copy + Eq + 'static> Logic for GraphedLinking<NodeID> {
             count: 0,
         }
     }
-    fn event_iter(&self) -> Self::EventIter<'_> {
-        Self::EventIter {
-            linking: self,
-            count: 0,
-        }
+    fn events(&self) -> &[Self::Event] {
+        &self.events
     }
 }
 

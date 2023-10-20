@@ -27,7 +27,6 @@ impl Logic for PointPhysics {
     type IdentData<'a> = PointPhysData<'a> where Self: 'a;
 
     type DataIter<'a> = PtPhysicsDataIter<'a> where Self: 'a;
-    type EventIter<'a> = PtPhysicsEventIter<'a> where Self: 'a;
 
     fn handle_predicate(&mut self, reaction: &Self::Reaction) {
         match reaction {
@@ -60,10 +59,13 @@ impl Logic for PointPhysics {
     }
 
     fn data_iter(&mut self) -> Self::DataIter<'_> {
-        todo!()
+        PtPhysicsDataIter {
+            physics: self,
+            count: 0,
+        }
     }
-    fn event_iter(&self) -> Self::EventIter<'_> {
-        todo!()
+    fn events(&self) -> &[Self::Event] {
+        &self.events
     }
 }
 

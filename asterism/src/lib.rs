@@ -15,9 +15,8 @@ pub mod control;
 pub mod entity_state;
 pub mod graph;
 pub mod linking;
-// TODO: reimplement logic/event structs + iterators for the rest of these modules ^_^)-b
-// pub mod physics;
-// pub mod resources;
+pub mod physics;
+pub mod resources;
 
 mod lending_iterator;
 
@@ -45,18 +44,15 @@ pub trait Logic {
     where
         Self: 'logic;
 
-    type EventIter<'a>: LendingIterator<Item<'a> = &'a <Self as Logic>::Event>
-    where
-        Self: 'a;
-
     /// processes the reaction if a predicate condition is met
     fn handle_predicate(&mut self, reaction: &Self::Reaction);
 
-    /// exposes the data associated with a particular ""entity"" of the logic. NOTE that modifying the data returned here does NOT change the logic's data!!!
+    /// exposes the data associated with a particular ""entity"" of the logic.
     fn get_ident_data(&mut self, ident: Self::Ident) -> Self::IdentData<'_>;
 
+    /// returns a [lending iterator]()
     fn data_iter(&mut self) -> Self::DataIter<'_>;
-    fn event_iter(&self) -> Self::EventIter<'_>;
+    fn events(&self) -> &[Self::Event];
 }
 
 /// An event produced by the logic. Holds both the data associated with the event and information about what the event is---these should be separated for easier matching.

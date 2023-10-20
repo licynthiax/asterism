@@ -43,7 +43,6 @@ where
     type IdentData<'logic> = &'logic mut [Action<ID, Wrapper::KeyCode>];
 
     type DataIter<'logic> = CtrlDataIter<'logic, ID, Wrapper> where Self: 'logic;
-    type EventIter<'logic> = CtrlEventIter<'logic, ID, Wrapper> where Self: 'logic;
 
     fn handle_predicate(&mut self, reaction: &Self::Reaction) {
         match reaction {
@@ -73,11 +72,8 @@ where
             count: 0,
         }
     }
-    fn event_iter(&self) -> Self::EventIter<'_> {
-        Self::EventIter {
-            control: self,
-            count: 0,
-        }
+    fn events(&self) -> &[Self::Event] {
+        &self.events
     }
 }
 
@@ -333,32 +329,6 @@ pub enum ControlEventType {
 }
 
 impl EventType for ControlEventType {}
-
-pub struct CtrlEventIter<'ctrl, ID, Wrapper>
-where
-    ID: Copy + Eq + Ord + 'ctrl,
-    Wrapper: InputWrapper + 'ctrl,
-{
-    control: &'ctrl KeyboardControl<ID, Wrapper>,
-    count: usize,
-}
-
-impl<'ctrl, ID, Wrapper> LendingIterator for CtrlEventIter<'ctrl, ID, Wrapper>
-where
-    ID: Copy + Eq + Ord + 'ctrl,
-    Wrapper: InputWrapper + 'ctrl,
-{
-    type Item<'a> = &'a ControlEvent<ID> where Self: 'a;
-
-    fn next(&mut self) -> Option<Self::Item<'_>> {
-        self.count += 1;
-        if self.count == self.control.events.len() {
-            None
-        } else {
-            Some(&self.control.events[self.count - 1])
-        }
-    }
-}
 
 pub mod wrapper {
     /// A wrapper to help keep track of input information that preexisting input handlers may not offer, but that we need.

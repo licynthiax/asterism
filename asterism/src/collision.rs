@@ -58,7 +58,7 @@ pub struct AabbCollision<ID: Copy + Eq> {
     /// A vector of all entities that are touching.
     ///
     /// Indices do _not_ run parallel with those in the above vectors.
-    pub contacts: Vec<Contact>,
+    contacts: Vec<Contact>,
 }
 
 impl<ID: Copy + Eq> AabbCollision<ID> {
@@ -233,7 +233,6 @@ impl<ID: Copy + Eq + 'static> Logic for AabbCollision<ID> {
     type IdentData<'logic> = AabbColData<'logic, ID>;
 
     type DataIter<'logic> = ColDataIter<'logic, ID> where Self: 'logic;
-    type EventIter<'logic> = ColEventIter<'logic, ID> where Self: 'logic;
 
     fn handle_predicate(&mut self, reaction: &Self::Reaction) {
         match reaction {
@@ -290,11 +289,8 @@ impl<ID: Copy + Eq + 'static> Logic for AabbCollision<ID> {
             count: 0,
         }
     }
-    fn event_iter(&self) -> Self::EventIter<'_> {
-        Self::EventIter {
-            collision: self,
-            count: 0,
-        }
+    fn events(&self) -> &[Self::Event] {
+        &self.contacts
     }
 }
 
@@ -366,32 +362,6 @@ where
                 self.count - 1,
                 self.collision.get_ident_data(self.count - 1),
             ))
-        }
-    }
-}
-
-pub struct ColEventIter<'col, ID>
-where
-    ID: Copy + Eq,
-{
-    collision: &'col AabbCollision<ID>,
-    count: usize,
-}
-
-impl<'col, ID> LendingIterator for ColEventIter<'col, ID>
-where
-    ID: Copy + Eq + 'static,
-{
-    type Item<'a> = &'a <AabbCollision<ID> as Logic>::Event
-    where
-        Self: 'a;
-
-    fn next(&mut self) -> Option<Self::Item<'_>> {
-        self.count += 1;
-        if self.count == self.collision.contacts.len() {
-            None
-        } else {
-            Some(&self.collision.contacts[self.count])
         }
     }
 }

@@ -147,7 +147,6 @@ impl<ID: Copy + Eq + 'static> Logic for FlatEntityState<ID> {
     type IdentData<'a> = &'a mut ID where Self: 'a;
 
     type DataIter<'logic> = FesDataIter<'logic, ID> where Self: 'logic;
-    type EventIter<'logic> = FesEventIter<'logic, ID> where Self: 'logic;
 
     fn handle_predicate(&mut self, reaction: &Self::Reaction) {
         match reaction {
@@ -170,11 +169,8 @@ impl<ID: Copy + Eq + 'static> Logic for FlatEntityState<ID> {
             count: 0,
         }
     }
-    fn event_iter(&self) -> Self::EventIter<'_> {
-        Self::EventIter {
-            ent_state: self,
-            count: 0,
-        }
+    fn events(&self) -> &[Self::Event] {
+        &self.events
     }
 }
 
