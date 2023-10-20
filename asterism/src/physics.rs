@@ -2,7 +2,7 @@
 //!
 //! Physics logics communicate that physical laws govern the movement of some in-game entities. They update and honor objects' physical properties like position, velocity, density, etc., according to physical laws integrated over time.
 
-use crate::{tables::OutputTable, Event, EventType, Logic, Reaction};
+use crate::{Event, EventType, LendingIterator, Logic, Reaction};
 use macroquad::math::Vec2;
 
 /// A physics logic using 2d points.
@@ -10,13 +10,13 @@ pub struct PointPhysics {
     pub positions: Vec<Vec2>,
     pub velocities: Vec<Vec2>,
     pub accelerations: Vec<Vec2>,
+    pub events: Vec<PhysicsEvent>,
 }
 
-#[derive(Clone)]
-pub struct PointPhysData {
-    pub pos: Vec2,
-    pub vel: Vec2,
-    pub acc: Vec2,
+pub struct PointPhysData<'data> {
+    pub pos: &'data mut Vec2,
+    pub vel: &'data mut Vec2,
+    pub acc: &'data mut Vec2,
 }
 
 impl Logic for PointPhysics {
@@ -24,7 +24,10 @@ impl Logic for PointPhysics {
     type Event = PhysicsEvent;
 
     type Ident = usize;
-    type IdentData = PointPhysData;
+    type IdentData<'a> = PointPhysData<'a> where Self: 'a;
+
+    type DataIter<'a> = PtPhysicsDataIter<'a> where Self: 'a;
+    type EventIter<'a> = PtPhysicsEventIter<'a> where Self: 'a;
 
     fn handle_predicate(&mut self, reaction: &Self::Reaction) {
         match reaction {
@@ -48,18 +51,19 @@ impl Logic for PointPhysics {
         }
     }
 
-    fn get_ident_data(&self, ident: Self::Ident) -> Self::IdentData {
+    fn get_ident_data(&mut self, ident: Self::Ident) -> Self::IdentData<'_> {
         PointPhysData {
-            pos: self.positions[ident],
-            vel: self.velocities[ident],
-            acc: self.accelerations[ident],
+            pos: &mut self.positions[ident],
+            vel: &mut self.velocities[ident],
+            acc: &mut self.accelerations[ident],
         }
     }
 
-    fn update_ident_data(&mut self, ident: Self::Ident, data: Self::IdentData) {
-        self.positions[ident] = data.pos;
-        self.velocities[ident] = data.vel;
-        self.accelerations[ident] = data.acc;
+    fn data_iter(&mut self) -> Self::DataIter<'_> {
+        todo!()
+    }
+    fn event_iter(&self) -> Self::EventIter<'_> {
+        todo!()
     }
 }
 
@@ -69,15 +73,33 @@ impl PointPhysics {
             positions: Vec::new(),
             velocities: Vec::new(),
             accelerations: Vec::new(),
+            events: Vec::new(),
         }
     }
     /// Update the physics logic: changes the velocities of entities based on acceleration, then changes entities' positions based on updated velocities.
     pub fn update(&mut self) {
-        for (pos, (vel, acc)) in self
+        self.events.clear();
+
+        for (i, ((pos, vel), acc)) in self
             .positions
             .iter_mut()
-            .zip(self.velocities.iter_mut().zip(self.accelerations.iter()))
+            .zip(self.velocities.iter_mut())
+            .zip(self.accelerations.iter())
+            .enumerate()
         {
+            if acc.x.abs() > 0.0001 && acc.y.abs() > 0.0001 {
+                self.events.push(PhysicsEvent {
+                    ent: i,
+                    event_type: PhysicsEventType::VelChange,
+                });
+            }
+            if vel.x.abs() > 0.0001 && vel.y.abs() > 0.0001 {
+                self.events.push(PhysicsEvent {
+                    ent: i,
+                    event_type: PhysicsEventType::PosChange,
+                });
+            }
+
             *vel += *acc;
             *pos += *vel;
         }
@@ -128,45 +150,38 @@ pub enum PhysicsEventType {
 }
 impl EventType for PhysicsEventType {}
 
-type QueryIdent = (
-    <PointPhysics as Logic>::Ident,
-    <PointPhysics as Logic>::IdentData,
-);
+pub struct PtPhysicsDataIter<'phys> {
+    physics: &'phys mut PointPhysics,
+    count: usize,
+}
 
-impl OutputTable<QueryIdent> for PointPhysics {
-    fn get_table(&self) -> Vec<QueryIdent> {
-        (0..self.positions.len())
-            .map(|idx| (idx, self.get_ident_data(idx)))
-            .collect()
+impl<'phys> LendingIterator for PtPhysicsDataIter<'phys> {
+    type Item<'a> = (<PointPhysics as Logic>::Ident, <PointPhysics as Logic>::IdentData<'a>) where Self: 'a;
+
+    fn next(&mut self) -> Option<Self::Item<'_>> {
+        self.count += 1;
+        if self.count == self.physics.positions.len() {
+            None
+        } else {
+            Some((self.count - 1, self.physics.get_ident_data(self.count - 1)))
+        }
     }
 }
 
-type QueryEvent = <PointPhysics as Logic>::Event;
+pub struct PtPhysicsEventIter<'phys> {
+    physics: &'phys PointPhysics,
+    count: usize,
+}
 
-impl OutputTable<QueryEvent> for PointPhysics {
-    fn get_table(&self) -> Vec<QueryEvent> {
-        let mut events = Vec::new();
-        self.accelerations.iter().enumerate().for_each(|(i, acc)| {
-            // velocity changes if acceleration != 0.0
-            if *acc != Vec2::ZERO {
-                let event = PhysicsEvent {
-                    ent: i,
-                    event_type: PhysicsEventType::VelChange,
-                };
-                events.push(event);
-            }
-        });
+impl<'phys> LendingIterator for PtPhysicsEventIter<'phys> {
+    type Item<'a> = &'a PhysicsEvent where Self: 'a;
 
-        self.velocities.iter().enumerate().for_each(|(i, vel)| {
-            // position changes if velocity != 0.0
-            if *vel != Vec2::ZERO {
-                let event = PhysicsEvent {
-                    ent: i,
-                    event_type: PhysicsEventType::PosChange,
-                };
-                events.push(event);
-            }
-        });
-        events
+    fn next(&mut self) -> Option<Self::Item<'_>> {
+        self.count += 1;
+        if self.count == self.physics.events.len() {
+            None
+        } else {
+            Some(&self.physics.events[self.count - 1])
+        }
     }
 }
