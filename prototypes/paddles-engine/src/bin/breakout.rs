@@ -119,39 +119,9 @@ fn init(game: &mut Game) {
             .control
             .handle_predicate(&ControlReaction::SetKeyValid(0, action_serve));
     };
+}
 
-    let bounce_ball = move |(i, j): &ColEvent, state: &mut State, logics: &mut Logics| {
-        let id = state.get_id(*i);
-        if let EntID::Ball(ball_id) = id {
-            let sides_touched = logics.collision.sides_touched(*i, *j);
-            let mut vals = logics.physics.get_ident_data(ball_id.idx());
-            if sides_touched.y != 0.0 {
-                vals.vel.y *= -1.0;
-            }
-            if sides_touched.x != 0.0 {
-                vals.vel.x *= -1.0;
-            }
-            logics.physics.update_ident_data(ball_id.idx(), vals);
-
-            let id = state.get_id(*j);
-            if let EntID::Wall(wall_id) = id {
-                if wall_id.idx() >= 4 {
-                    state.queue_remove(EntID::Wall(wall_id));
-                    logics
-                        .resources
-                        .handle_predicate(&(RsrcPool::Score(score), Transaction::Change(1)));
-                }
-            }
-        }
-    };
-
-    let move_paddle = QueryType::User(game.add_query());
-    let serve = QueryType::User(game.add_query());
-    let bounce = QueryType::User(game.add_query());
-    let reset_lose = QueryType::User(game.add_query());
-    let reset_win = QueryType::User(game.add_query());
-
-    paddles_engine::rules!(game =>
+/* paddles_engine::rules!(game =>
         control: [
             {
                 filter move_paddle,
@@ -231,4 +201,4 @@ fn init(game: &mut Game) {
             }
         ]
     );
-}
+*/

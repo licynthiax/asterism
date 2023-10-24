@@ -217,12 +217,11 @@ impl<ID: Copy + Eq> AabbCollision<ID> {
     }
 }
 
-#[derive(Clone)]
 pub struct AabbColData<'data, ID: Copy + Eq> {
-    pub center: &'data Vec2,
-    pub half_size: &'data Vec2,
-    pub vel: &'data Vec2,
-    pub meta: &'data CollisionData<ID>,
+    pub center: &'data mut Vec2,
+    pub half_size: &'data mut Vec2,
+    pub vel: &'data mut Vec2,
+    pub meta: &'data mut CollisionData<ID>,
 }
 
 impl<ID: Copy + Eq + 'static> Logic for AabbCollision<ID> {

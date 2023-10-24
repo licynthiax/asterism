@@ -7,7 +7,6 @@ use asterism::{
     physics::PointPhysics,
     resources::QueuedResources,
 };
-use asterism::{LendingIterator, Logic};
 use macroquad::prelude::*;
 
 mod entities;
@@ -20,6 +19,7 @@ pub use asterism::collision::{AabbColData, AabbCollision, CollisionReaction};
 pub use asterism::control::{Action, ControlEventType, ControlReaction, Values};
 pub use asterism::physics::{PhysicsEvent, PhysicsReaction, PointPhysData};
 pub use asterism::resources::{ResourceEventType, ResourceReaction, Transaction};
+pub use asterism::{LendingIterator, Logic};
 pub use types::*;
 
 pub struct Logics {
@@ -250,10 +250,10 @@ fn control(game: &mut Game) {
     for (event_data, actions) in game.events.control.iter() {
         let events = game.logics.control.events();
         match event_data {
-            EngineCtrlEvents::MovePaddle(paddle, id) => {
+            EngineCtrlEvent::MovePaddle(paddle, id) => {
                 let relevant = events.iter().any(|e| {
                     e.action_id == *id
-                        && e.set == *paddle
+                        && e.set == paddle.idx()
                         && e.event_type == ControlEventType::KeyHeld
                 });
                 if relevant {
@@ -262,10 +262,10 @@ fn control(game: &mut Game) {
                     }
                 }
             }
-            EngineCtrlEvents::ServePressed(paddle, id) => {
+            EngineCtrlEvent::ServePressed(paddle, id) => {
                 let relevant = events.iter().any(|e| {
                     e.action_id == *id
-                        && e.set == *paddle
+                        && e.set == paddle.idx()
                         && e.event_type == ControlEventType::KeyPressed
                 });
                 if relevant {
@@ -316,7 +316,7 @@ fn collision(game: &mut Game) {
     for (event_data, actions) in game.events.collision.iter() {
         let events = game.logics.collision.events();
         match event_data {
-            EngineCollisionEvents::BallPaddleCollide(ball, paddle) => {
+            EngineCollisionEvent::BallPaddleCollide(ball, paddle) => {
                 let ball_idx = game.state.get_col_idx(ball.idx(), CollisionEnt::Ball);
                 let paddle_idx = game.state.get_col_idx(paddle.idx(), CollisionEnt::Paddle);
                 let relevant = events.iter().any(|e| ball_idx == e.i && paddle_idx == e.j);
@@ -326,7 +326,7 @@ fn collision(game: &mut Game) {
                     }
                 }
             }
-            EngineCollisionEvents::BallWallCollide(ball, wall) => {
+            EngineCollisionEvent::BallWallCollide(ball, wall) => {
                 let ball_idx = game.state.get_col_idx(ball.idx(), CollisionEnt::Ball);
                 let wall_idx = game.state.get_col_idx(wall.idx(), CollisionEnt::Wall);
                 let relevant = events.iter().any(|e| ball_idx == e.i && wall_idx == e.j);
@@ -336,7 +336,7 @@ fn collision(game: &mut Game) {
                     }
                 }
             }
-            EngineCollisionEvents::BallScoreWallCollide(ball, score_wall) => {
+            EngineCollisionEvent::BallScoreWallCollide(ball, score_wall) => {
                 let ball_idx = game.state.get_col_idx(ball.idx(), CollisionEnt::Ball);
                 let wall_idx = game.state.get_col_idx(score_wall.idx(), CollisionEnt::Wall);
                 let relevant = events.iter().any(|e| ball_idx == e.i && wall_idx == e.j);
@@ -346,6 +346,11 @@ fn collision(game: &mut Game) {
                     }
                 }
             }
+            EngineCollisionEvent::PaddleCollisions => {
+                // how would i deal with stuff like "filter on all walls"???
+                // let relevant = events.iter().filter_map(|e|)
+            }
+            EngineCollisionEvent::WallCollisions => {}
         }
     }
 }

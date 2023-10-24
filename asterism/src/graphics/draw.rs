@@ -68,6 +68,7 @@ impl DrawRects {
     }
 }
 
+#[derive(Debug)]
 pub enum Drawable {
     /// position + size, then color
     Rectangle(Rect, Color),
@@ -122,7 +123,7 @@ impl Drawable {
     }
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Copy, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Debug)]
 pub struct TexID(u32);
 
 /// struct to store all textures in a game
@@ -162,13 +163,14 @@ impl Textures {
     }
 }
 
+#[derive(Debug)]
 pub struct Animation {
     rect: Rect,
     animations: Vec<AnimData>,
     current_frame: (usize, usize),
 }
 
-// the difference between animation
+#[derive(Debug)]
 struct AnimData {
     frames: Vec<TexID>,
     loops: bool,

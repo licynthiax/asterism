@@ -1,5 +1,5 @@
 use macroquad::prelude::*;
-use paddles_engine::*;
+use paddles_engine::{events::*, *};
 
 const WIDTH: u8 = 255;
 const HEIGHT: u8 = 255;
@@ -35,7 +35,7 @@ fn init(game: &mut Game) {
         ),
         Vec2::new(BALL_SIZE as f32, BALL_SIZE as f32),
     );
-    game.add_ball(ball);
+    let ball = game.add_ball(ball);
 
     // walls
     // left
@@ -60,101 +60,94 @@ fn init(game: &mut Game) {
     ));
 
     // paddle 1
-    let mut paddle1 = Paddle::new(
+    let mut p1 = Paddle::new(
         Vec2::new(
             PADDLE_OFF_X as f32,
             HEIGHT as f32 / 2.0 - PADDLE_HEIGHT as f32 / 2.0,
         ),
         Vec2::new(PADDLE_WIDTH as f32, PADDLE_HEIGHT as f32),
     );
-    let action_q = paddle1.add_control_map(KeyCode::Q, true);
-    let action_a = paddle1.add_control_map(KeyCode::A, true);
-    let action_w = paddle1.add_control_map(KeyCode::W, true);
-    game.add_paddle(paddle1);
+    let action_q = p1.add_control_map(KeyCode::Q, true);
+    let action_a = p1.add_control_map(KeyCode::A, true);
+    let action_w = p1.add_control_map(KeyCode::W, true);
+    let paddle1 = game.add_paddle(p1);
 
     // paddle 2
-    let mut paddle2 = Paddle::new(
+    let mut p2 = Paddle::new(
         Vec2::new(
             WIDTH as f32 - PADDLE_OFF_X as f32 - PADDLE_WIDTH as f32,
             HEIGHT as f32 / 2.0 - PADDLE_HEIGHT as f32 / 2.0,
         ),
         Vec2::new(PADDLE_WIDTH as f32, PADDLE_HEIGHT as f32),
     );
-    let action_o = paddle2.add_control_map(KeyCode::O, true);
-    let action_l = paddle2.add_control_map(KeyCode::L, true);
-    let action_i = paddle2.add_control_map(KeyCode::I, false);
-    game.add_paddle(paddle2);
+    let action_o = p2.add_control_map(KeyCode::O, true);
+    let action_l = p2.add_control_map(KeyCode::L, true);
+    let action_i = p2.add_control_map(KeyCode::I, false);
+    let paddle2 = game.add_paddle(p2);
 
     let score1 = game.add_score(Score::new(0));
     let score2 = game.add_score(Score::new(0));
 
-    // expands to a match statement mapping the values 0, 1 to the two inputs given
-    //
-    // example:
-    // match_set!(set, 1, 0)
-    //
-    // expands to
-    //
-    // match set {
-    //     0 => 1,
-    //     1 => 0,
-    //     _ => unreachable!(),
-    // }
-    macro_rules! match_set {
-        ($which_set:expr, $if1:expr, $if2:expr) => {
-            match $which_set {
-                0 => $if1,
-                1 => $if2,
-                _ => unreachable!(),
-            }
-        };
-    }
-
     // paddle movement
-    let move_down = |logics: &mut Logics, set| {
-        let mut paddle_col = logics.collision.get_ident_data(set);
-        paddle_col.center.y += 1.0;
-        paddle_col.vel.y = (paddle_col.vel.y.abs() + 1.0).min(1.0);
-        logics.collision.update_ident_data(set, paddle_col);
-    };
-
-    let move_up = |logics: &mut Logics, set| {
-        let mut paddle_col = logics.collision.get_ident_data(set);
-        paddle_col.center.y -= 1.0;
-        paddle_col.vel.y = (paddle_col.vel.y.abs() - 1.0).max(-1.0);
-        logics.collision.update_ident_data(set, paddle_col);
-    };
+    game.events.add_ctrl_event(
+        EngineCtrlEvent::MovePaddle(paddle1, action_q),
+        EngineAction::MovePaddleBy(paddle1, Vec2::new(0.0, 1.0)),
+    );
+    game.events.add_ctrl_event(
+        EngineCtrlEvent::MovePaddle(paddle1, action_a),
+        EngineAction::MovePaddleBy(paddle1, Vec2::new(0.0, -1.0)),
+    );
+    game.events.add_ctrl_event(
+        EngineCtrlEvent::MovePaddle(paddle2, action_o),
+        EngineAction::MovePaddleBy(paddle2, Vec2::new(0.0, 1.0)),
+    );
+    game.events.add_ctrl_event(
+        EngineCtrlEvent::MovePaddle(paddle2, action_l),
+        EngineAction::MovePaddleBy(paddle2, Vec2::new(0.0, -1.0)),
+    );
 
     // serving
-    let serve_ball = move |logics: &mut Logics, set: usize| {
-        let vel = match_set!(set, Vec2::splat(1.0), Vec2::splat(-1.0));
-        let action_id = match_set!(set, action_w, action_i);
-        logics
-            .physics
-            .handle_predicate(&PhysicsReaction::SetVel(0, vel));
-        logics
-            .control
-            .handle_predicate(&ControlReaction::SetKeyInvalid(set, action_id));
-    };
+    game.events.add_ctrl_event(
+        EngineCtrlEvent::ServePressed(paddle1, action_w),
+        EngineAction::SetBallVel(ball, Vec2::splat(1.0)),
+    );
+    game.events.add_ctrl_event(
+        EngineCtrlEvent::ServePressed(paddle1, action_w),
+        EngineAction::SetKeyInvalid(paddle1, action_w),
+    );
+
+    game.events.add_ctrl_event(
+        EngineCtrlEvent::ServePressed(paddle2, action_i),
+        EngineAction::SetBallVel(ball, Vec2::splat(-1.0)),
+    );
+    game.events.add_ctrl_event(
+        EngineCtrlEvent::ServePressed(paddle2, action_i),
+        EngineAction::SetKeyInvalid(paddle2, action_i),
+    );
 
     // increase score on collision with side wall
-    let inc_score = move |logics: &mut Logics, set: usize| {
-        logics
-            .control
-            .handle_predicate(&ControlReaction::SetKeyValid(
-                set,
-                match_set!(set, action_w, action_i),
-            ));
-        logics.resources.handle_predicate(&(
-            RsrcPool::Score(match_set!(set, score1, score2)),
-            Transaction::Change(1),
-        ));
-    };
+    game.events.add_col_event(
+        EngineCollisionEvent::BallScoreWallCollide(ball, right_wall),
+        EngineAction::ChangeScore(score1, 1),
+    );
+    game.events.add_col_event(
+        EngineCollisionEvent::BallScoreWallCollide(ball, left_wall),
+        EngineAction::ChangeScore(score2, 1),
+    );
 
-    let bounce_ball = |(i, j): &ColEvent, state: &mut State, logics: &mut Logics| {
-        let id = state.get_id(*i);
+    game.events.add_col_event(
+        EngineCollisionEvent::BallScoreWallCollide(ball, right_wall),
+        EngineAction::SetKeyValid(paddle1, action_w),
+    );
+    game.events.add_col_event(
+        EngineCollisionEvent::BallScoreWallCollide(ball, left_wall),
+        EngineAction::SetKeyValid(paddle2, action_i),
+    );
+
+    /* let bounce_ball = |ColEvent { i, j, .. }, state: &mut State, logics: &mut Logics| {
+        let id = state.get_id(i);
         if let EntID::Ball(ball_id) = id {
-            let sides_touched = logics.collision.sides_touched(*i, *j);
+            let sides_touched = logics.collision.sides_touched(i, j);
             let mut vals = logics.physics.get_ident_data(ball_id.idx());
             if sides_touched.y != 0.0 {
                 vals.vel.y *= -1.0;
@@ -162,17 +155,10 @@ fn init(game: &mut Game) {
             if sides_touched.x != 0.0 {
                 vals.vel.x *= -1.0;
             }
-            logics.physics.update_ident_data(ball_id.idx(), vals);
         }
-    };
+    }; */
 
-    let move_paddle = QueryType::User(game.add_query());
-    let serve = QueryType::User(game.add_query());
-    let bounce = QueryType::User(game.add_query());
-    let score = QueryType::User(game.add_query());
-    let score_increased = QueryType::User(game.add_query());
-
-    paddles_engine::rules!(game =>
+    /*    paddles_engine::rules!(game =>
         control: [
             {
                 filter move_paddle,
@@ -269,5 +255,5 @@ fn init(game: &mut Game) {
                 }
             }
         ]
-    );
+    );*/
 }
