@@ -40,7 +40,7 @@ impl Logics {
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum EntID {
     Wall(WallID),
     Ball(BallID),
@@ -247,18 +247,31 @@ pub async fn run(mut game: Game) {
 fn control(game: &mut Game) {
     game.logics.control.update(&());
 
-    // todo: idr what was happening here lol
-    let events = game.logics.control.events();
-    for e in events.iter() {
-        for (event_data, engine_action) in game.events.control.iter() {
-            match event_data {
-                EngineCtrlEvents::MovePaddle(paddle, id) => {
-                    if e.action_id == *id {
-                        engine_action.perform_action(&mut game.state, &mut game.logics);
+    for (event_data, actions) in game.events.control.iter() {
+        let events = game.logics.control.events();
+        match event_data {
+            EngineCtrlEvents::MovePaddle(paddle, id) => {
+                let relevant = events.iter().any(|e| {
+                    e.action_id == *id
+                        && e.set == *paddle
+                        && e.event_type == ControlEventType::KeyHeld
+                });
+                if relevant {
+                    for action in actions {
+                        action.perform_action(&mut game.state, &mut game.logics);
                     }
                 }
-                EngineCtrlEvents::ServePressed(paddle, id) => {
-                    // todo
+            }
+            EngineCtrlEvents::ServePressed(paddle, id) => {
+                let relevant = events.iter().any(|e| {
+                    e.action_id == *id
+                        && e.set == *paddle
+                        && e.event_type == ControlEventType::KeyPressed
+                });
+                if relevant {
+                    for action in actions {
+                        action.perform_action(&mut game.state, &mut game.logics);
+                    }
                 }
             }
         }
@@ -297,6 +310,42 @@ fn collision(game: &mut Game) {
                     idx,
                     *data.center - *data.half_size,
                 ));
+        }
+    }
+
+    for (event_data, actions) in game.events.collision.iter() {
+        let events = game.logics.collision.events();
+        match event_data {
+            EngineCollisionEvents::BallPaddleCollide(ball, paddle) => {
+                let ball_idx = game.state.get_col_idx(ball.idx(), CollisionEnt::Ball);
+                let paddle_idx = game.state.get_col_idx(paddle.idx(), CollisionEnt::Paddle);
+                let relevant = events.iter().any(|e| ball_idx == e.i && paddle_idx == e.j);
+                if relevant {
+                    for action in actions {
+                        action.perform_action(&mut game.state, &mut game.logics);
+                    }
+                }
+            }
+            EngineCollisionEvents::BallWallCollide(ball, wall) => {
+                let ball_idx = game.state.get_col_idx(ball.idx(), CollisionEnt::Ball);
+                let wall_idx = game.state.get_col_idx(wall.idx(), CollisionEnt::Wall);
+                let relevant = events.iter().any(|e| ball_idx == e.i && wall_idx == e.j);
+                if relevant {
+                    for action in actions {
+                        action.perform_action(&mut game.state, &mut game.logics);
+                    }
+                }
+            }
+            EngineCollisionEvents::BallScoreWallCollide(ball, score_wall) => {
+                let ball_idx = game.state.get_col_idx(ball.idx(), CollisionEnt::Ball);
+                let wall_idx = game.state.get_col_idx(score_wall.idx(), CollisionEnt::Wall);
+                let relevant = events.iter().any(|e| ball_idx == e.i && wall_idx == e.j);
+                if relevant {
+                    for action in actions {
+                        action.perform_action(&mut game.state, &mut game.logics);
+                    }
+                }
+            }
         }
     }
 }

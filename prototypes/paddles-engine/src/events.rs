@@ -1,65 +1,81 @@
+use crate::types::*;
 use asterism::Logic;
 use macroquad::math::Vec2;
 
 #[derive(Clone, Copy)]
 pub enum EngineCtrlEvents {
-    MovePaddle(usize, crate::types::ActionID),
-    ServePressed(usize, crate::types::ActionID),
+    MovePaddle(usize, ActionID),
+    ServePressed(usize, ActionID),
 }
 
 #[derive(Clone, Copy)]
 pub enum EngineCollisionEvents {
-    BallPaddleCollide { ball: usize, paddle: usize },
-    BallWallCollide { ball: usize, wall: usize },
-    BallScoreWallCollide { ball: usize, score: usize },
+    BallPaddleCollide(BallID, PaddleID),
+    BallWallCollide(BallID, WallID),
+    BallScoreWallCollide(BallID, WallID),
 }
 
 #[derive(Clone)]
 pub enum EngineActions {
-    BounceBall(usize, usize), // idx of paddle, then ball
-    ServeBall(usize, usize),  // idx of paddle, then ball
-    MovePaddle(usize, Vec2),
-    MoveBall(usize, Vec2), // ball idx
-    RemoveEntity(usize),
+    BounceBall(PaddleID, BallID),
+    SetBallVel(BallID, Vec2),
+    SetBallPos(BallID, Vec2),
+    SetPaddlePos(PaddleID, Vec2),
+    ChangeScore(ScoreID, u16),
+    RemoveEntity(crate::EntID),
     AddEntity(crate::Ent),
-    ChangeScore(usize, u16), // score idx, val
 }
 
 impl EngineActions {
     pub(crate) fn perform_action(&self, state: &mut crate::State, logics: &mut crate::Logics) {
         match self {
-            Self::BounceBall(i, j) => {
-                let id = state.get_id(*i);
-                if let crate::EntID::Ball(ball_id) = id {
-                    let sides_touched = logics.collision.sides_touched(*i, *j);
-                    let vals = logics.physics.get_ident_data(ball_id.idx());
-                    if sides_touched.y != 0.0 {
-                        vals.vel.y *= -1.0;
-                    }
-                    if sides_touched.x != 0.0 {
-                        vals.vel.x *= -1.0;
-                    }
+            Self::BounceBall(ball, paddle) => {
+                let ball_idx = state.get_col_idx(ball.idx(), CollisionEnt::Ball);
+                let paddle_idx = state.get_col_idx(paddle.idx(), CollisionEnt::Paddle);
+                let sides_touched = logics.collision.sides_touched(ball_idx, paddle_idx);
+
+                let vals = logics.physics.get_ident_data(ball.idx());
+                if sides_touched.y != 0.0 {
+                    vals.vel.y *= -1.0;
+                }
+                if sides_touched.x != 0.0 {
+                    vals.vel.x *= -1.0;
                 }
             }
+            Self::SetBallPos(ball, pos) => {
+                logics
+                    .physics
+                    .handle_predicate(&crate::PhysicsReaction::SetPos(ball.idx(), *pos));
+                let col_idx = state.get_col_idx(ball.idx(), CollisionEnt::Ball);
+                logics
+                    .collision
+                    .handle_predicate(&crate::CollisionReaction::SetPos(col_idx, *pos));
+            }
+            Self::SetBallVel(ball, vel) => logics
+                .physics
+                .handle_predicate(&crate::PhysicsReaction::SetVel(ball.idx(), *vel)),
             Self::ChangeScore(score, val) => {
                 logics.resources.handle_predicate(&(
-                    // i think this logic is wrong, but that's the fault of past me when they
-                    // decided to make this stuff so *convoluted*
-                    crate::RsrcPool::Score(state.scores[*score]),
+                    crate::RsrcPool::Score(*score),
                     asterism::resources::Transaction::Change(*val),
                 ));
             }
-            _ => {
-                todo!()
+            Self::SetPaddlePos(paddle, pos) => {
+                let col_idx = state.get_col_idx(paddle.idx(), CollisionEnt::Paddle);
+                logics
+                    .collision
+                    .handle_predicate(&crate::CollisionReaction::SetPos(col_idx, *pos));
             }
+            Self::RemoveEntity(ent_id) => state.queue_remove(*ent_id),
+            Self::AddEntity(ent) => state.queue_add(ent.clone()),
         }
     }
 }
 
-#[allow(clippy::type_complexity)]
+// #[allow(clippy::type_complexity)]
 pub struct Events {
-    pub(crate) control: Vec<(EngineCtrlEvents, EngineActions)>,
-    pub(crate) collision: Vec<(EngineCollisionEvents, EngineActions)>,
+    pub(crate) control: Vec<(EngineCtrlEvents, Vec<EngineActions>)>,
+    pub(crate) collision: Vec<(EngineCollisionEvents, Vec<EngineActions>)>,
 }
 
 impl Events {
