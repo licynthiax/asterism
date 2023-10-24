@@ -1,8 +1,8 @@
 //! adding/removing entities
 use asterism::collision::CollisionData;
-use asterism::graphics::draw::*;
+use asterism::graphics::draw;
 use asterism::Logic;
-use asterism::{collision::CollisionReaction, physics::PhysicsReaction};
+use asterism::{collision::CollisionReaction, physics::PhysicsReaction, resources::PoolValues};
 use macroquad::math::Vec2;
 
 use crate::types::*;
@@ -35,7 +35,7 @@ macro_rules! add_ent {
     (@attach $game:expr, $id:ident $gamefield:ident $ent_name:ident $ent_ty:ty; $id_ty:ty [resource]) => {
         $game.logics.resources
             .items
-            .insert(RsrcPool::Score($id), ($ent_name.value, <$ent_ty>::MIN, <$ent_ty>::MAX));
+            .insert(RsrcPool::Score($id), PoolValues{ val: $ent_name.value, min: <$ent_ty>::MIN, max: <$ent_ty>::MAX});
     };
 
     (@attach $game:expr, $id:ident $gamefield:ident $ent_name:ident $ent_ty:ty; $id_ty:ty [physics]) => {
@@ -50,8 +50,8 @@ macro_rules! add_ent {
             .state
             .get_col_idx($game.state.$gamefield.len(), $col_ent);
 
-        let rect = Drawable::Rectangle(
-            Rect::new(
+        let rect = draw::Drawable::Rectangle(
+            draw::Rect::new(
                 $ent_name.pos.x,
                 $ent_name.pos.y,
                 $ent_name.size.x,
@@ -85,7 +85,7 @@ impl Game {
             paddles: (paddle: Paddle) -> PaddleID {
                 [collision: col_data],
                 [control],
-                [draw: CollisionEnt::Paddle, WHITE]
+                [draw: CollisionEnt::Paddle, draw::WHITE]
             }, self, id);
         id
     }
@@ -102,7 +102,7 @@ impl Game {
             balls: (ball: Ball) -> BallID {
                 [collision: col_data],
                 [physics],
-                [draw: CollisionEnt::Ball, YELLOW]
+                [draw: CollisionEnt::Ball, draw::YELLOW]
             }, self, id);
         id
     }
@@ -119,7 +119,7 @@ impl Game {
         add_ent!(
             walls: (wall: Wall) -> WallID {
                 [collision: col_data],
-                [draw: CollisionEnt::Wall, SKYBLUE]
+                [draw: CollisionEnt::Wall, draw::SKYBLUE]
             }, self, id);
 
         id

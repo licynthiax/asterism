@@ -128,14 +128,13 @@ impl Score {
     }
 }
 
-use asterism::collision::CollisionEvent;
 use asterism::control::ControlEvent;
 
 pub type CtrlEvent = ControlEvent<ActionID>;
-pub type CtrlIdent = (usize, Vec<asterism::control::Action<ActionID, KeyCode>>);
-pub type ColEvent = CollisionEvent;
-pub type ColIdent = (usize, asterism::collision::AabbColData<CollisionEnt>);
+pub type CtrlIdent<'a> = (usize, &'a [asterism::control::Action<ActionID, KeyCode>]);
+pub type ColEvent = asterism::collision::Contact;
+pub type ColIdent<'a> = (usize, asterism::collision::AabbColData<'a, CollisionEnt>);
 pub type RsrcIdent = (RsrcPool, (u16, u16, u16));
 pub type RsrcEvent = asterism::resources::ResourceEvent<RsrcPool>;
-pub type PhysIdent = (usize, asterism::physics::PointPhysData);
+pub type PhysIdent<'a> = (usize, asterism::physics::PointPhysData<'a>);
 pub type PhysEvent = asterism::physics::PhysicsEvent;

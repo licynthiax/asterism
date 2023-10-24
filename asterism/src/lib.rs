@@ -13,16 +13,15 @@
 pub mod collision;
 pub mod control;
 pub mod entity_state;
-pub mod graph;
 pub mod linking;
 pub mod physics;
 pub mod resources;
 
-mod lending_iterator;
-
+pub mod graph;
 pub mod graphics;
+pub mod lending_iterator;
 
-use lending_iterator::LendingIterator;
+pub use lending_iterator::LendingIterator;
 
 /// An operational logic
 pub trait Logic {

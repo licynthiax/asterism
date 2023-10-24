@@ -3,10 +3,11 @@
 
 use asterism::{
     control::{KeyboardControl, MacroquadInputWrapper},
-    graphics::draw::*,
+    graphics::draw::{self, Draw},
     physics::PointPhysics,
     resources::QueuedResources,
 };
+use asterism::{LendingIterator, Logic};
 use macroquad::prelude::*;
 
 mod entities;
@@ -19,8 +20,6 @@ pub use asterism::collision::{AabbColData, AabbCollision, CollisionReaction};
 pub use asterism::control::{Action, ControlEventType, ControlReaction, Values};
 pub use asterism::physics::{PhysicsEvent, PhysicsReaction, PointPhysData};
 pub use asterism::resources::{ResourceEventType, ResourceReaction, Transaction};
-pub use asterism::tables::*;
-pub use asterism::{Logic, OutputTable};
 pub use types::*;
 
 pub struct Logics {
@@ -124,46 +123,19 @@ pub struct Game {
     pub state: State,
     pub logics: Logics,
     pub events: Events,
-    pub tables: ConditionTables<QueryType>,
     pub draw: Draw,
 }
 
 impl Game {
     pub fn new() -> Self {
-        let mut tables = ConditionTables::new();
-
-        // collision
-        tables.add_query::<ColEvent>(QueryType::ColEvent, None);
-        tables.add_query::<ColIdent>(QueryType::ColIdent, None);
-
-        // phys
-        tables.add_query::<PhysIdent>(QueryType::PhysIdent, None);
-        tables.add_query::<PhysEvent>(QueryType::PhysEvent, None);
-
-        // rsrc
-        tables.add_query::<RsrcEvent>(QueryType::RsrcEvent, None);
-        tables.add_query::<RsrcIdent>(QueryType::RsrcIdent, None);
-
-        // ctrl
-        tables.add_query::<CtrlEvent>(QueryType::CtrlEvent, None);
-        tables.add_query::<CtrlIdent>(QueryType::CtrlIdent, None);
-
-        // ball collision idents
-        // ball physics idents are just physics idents
-        tables.add_query::<ColIdent>(
-            QueryType::BallCol,
-            Some(Compose::Filter(QueryType::ColIdent)),
-        );
-
         let mut draw = Draw::new();
-        draw.background_color = DARKBLUE;
+        draw.background_color = draw::DARKBLUE;
 
         Self {
             state: State::default(),
             logics: Logics::new(),
             events: Events::new(),
             draw,
-            tables,
         }
     }
 }
@@ -275,13 +247,8 @@ pub async fn run(mut game: Game) {
 fn control(game: &mut Game) {
     game.logics.control.update(&());
 
-    game.tables
-        .update_single::<CtrlIdent>(QueryType::CtrlIdent, game.logics.control.get_table())
-        .unwrap();
-    let events = game
-        .tables
-        .update_single::<CtrlEvent>(QueryType::CtrlEvent, game.logics.control.get_table())
-        .unwrap();
+    // todo: idr what was happening here lol
+    let events = game.logics.control.events();
     for e in events.iter() {
         for (event_data, engine_action) in game.events.control.iter() {
             match event_data {
@@ -301,74 +268,49 @@ fn control(game: &mut Game) {
 fn physics(game: &mut Game) {
     game.logics.physics.update();
 
-    game.tables
-        .update_single::<PhysEvent>(QueryType::PhysEvent, game.logics.physics.get_table())
-        .unwrap();
-
-    let ans = game
-        .tables
-        .update_single::<PhysIdent>(QueryType::PhysIdent, game.logics.physics.get_table())
-        .unwrap();
+    let mut ans = game.logics.physics.data_iter();
 
     // update physics positions to collision
-    for (idx, data) in ans.iter() {
-        let idx = game.state.get_col_idx(*idx, CollisionEnt::Ball);
+    while let Some((idx, data)) = ans.next() {
+        let idx = game.state.get_col_idx(idx, CollisionEnt::Ball);
 
         game.logics
             .collision
-            .handle_predicate(&CollisionReaction::SetPos(idx, data.pos));
+            .handle_predicate(&CollisionReaction::SetPos(idx, *data.pos));
     }
 }
 
 fn collision(game: &mut Game) {
     game.logics.collision.update();
 
-    game.tables
-        .update_single::<ColEvent>(QueryType::ColEvent, game.logics.collision.get_table())
-        .unwrap();
-    game.tables
-        .update_single::<ColIdent>(QueryType::ColIdent, game.logics.collision.get_table())
-        .unwrap();
-
     // update collision positions to physics
     let paddles_len = game.state.paddles.len();
     let walls_len = game.state.walls.len();
-    let ans = game
-        .tables
-        .update_filter(
-            QueryType::BallCol,
-            Box::new(|(idx, _): &ColIdent| *idx > paddles_len + walls_len),
-        )
-        .unwrap();
+    let mut ans = game.logics.collision.data_iter();
 
-    for (idx, data) in ans.iter() {
-        let idx = idx - paddles_len - walls_len;
-        game.logics
-            .physics
-            .handle_predicate(&PhysicsReaction::SetPos(idx, data.center - data.half_size));
+    while let Some((idx, data)) = ans.next() {
+        if idx > paddles_len + walls_len {
+            let idx = idx - paddles_len - walls_len;
+            game.logics
+                .physics
+                .handle_predicate(&PhysicsReaction::SetPos(
+                    idx,
+                    *data.center - *data.half_size,
+                ));
+        }
     }
 }
 
 fn resources(game: &mut Game) {
     game.logics.resources.update();
-
-    game.tables
-        .update_single::<RsrcEvent>(QueryType::RsrcEvent, game.logics.resources.get_table())
-        .unwrap();
-    game.tables
-        .update_single::<RsrcIdent>(QueryType::RsrcIdent, game.logics.resources.get_table())
-        .unwrap();
 }
 
 pub fn draw(game: &mut Game) {
-    let col_data = game
-        .tables
-        .get_row::<ColIdent>(QueryType::ColIdent)
-        .unwrap();
-    for (i, (_, col)) in col_data.iter().enumerate() {
+    let mut col_data = game.logics.collision.data_iter().enumerate();
+    while let Some((i, (_, col))) = col_data.next() {
         let center = col.center;
         let hs = col.half_size;
-        let rect = Rect::new(center.x - hs.x, center.y - hs.y, hs.x * 2.0, hs.y * 2.0);
+        let rect = draw::Rect::new(center.x - hs.x, center.y - hs.y, hs.x * 2.0, hs.y * 2.0);
         game.draw.update_rect(i, rect);
     }
     game.draw.draw();

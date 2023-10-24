@@ -32,14 +32,13 @@ impl EngineActions {
                 let id = state.get_id(*i);
                 if let crate::EntID::Ball(ball_id) = id {
                     let sides_touched = logics.collision.sides_touched(*i, *j);
-                    let mut vals = logics.physics.get_ident_data(ball_id.idx());
+                    let vals = logics.physics.get_ident_data(ball_id.idx());
                     if sides_touched.y != 0.0 {
                         vals.vel.y *= -1.0;
                     }
                     if sides_touched.x != 0.0 {
                         vals.vel.x *= -1.0;
                     }
-                    logics.physics.update_ident_data(ball_id.idx(), vals);
                 }
             }
             Self::ChangeScore(score, val) => {
