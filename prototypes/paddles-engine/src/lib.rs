@@ -40,7 +40,7 @@ impl Logics {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum EntID {
     Wall(WallID),
     Ball(BallID),
@@ -54,6 +54,18 @@ pub enum Ent {
     Ball(Ball),
     Paddle(Paddle),
     Score(Score),
+}
+
+impl std::fmt::Debug for Ent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let ent_type = match self {
+            Ent::Wall(_) => "Ent::Wall",
+            Ent::Ball(_) => "Ent::Ball",
+            Ent::Paddle(_) => "Ent::Paddle",
+            Ent::Score(_) => "Ent::Score",
+        };
+        f.write_str(ent_type)
+    }
 }
 
 #[derive(Default)]
@@ -199,9 +211,18 @@ macro_rules! match_ent_id {
 }
 
 pub async fn run(mut game: Game) {
+    use std::collections::VecDeque;
+    let mut fps = VecDeque::with_capacity(1000);
     loop {
         if is_key_down(KeyCode::Escape) {
             break;
+        }
+
+        if fps.len() == fps.capacity() {
+            fps.pop_front();
+            fps.push_back(get_fps());
+        } else {
+            fps.push_back(get_fps());
         }
 
         draw(&mut game);
@@ -242,6 +263,7 @@ pub async fn run(mut game: Game) {
 
         next_frame().await;
     }
+    println!("{}", fps.iter().sum::<i32>() / fps.len() as i32);
 }
 
 fn control(game: &mut Game) {
@@ -282,6 +304,7 @@ fn physics(game: &mut Game) {
     game.logics.physics.update();
 
     let mut ans = game.logics.physics.data_iter();
+    // dbg!(ans.next().is_some());
 
     // update physics positions to collision
     while let Some((idx, data)) = ans.next() {
@@ -290,6 +313,9 @@ fn physics(game: &mut Game) {
         game.logics
             .collision
             .handle_predicate(&CollisionReaction::SetPos(idx, *data.pos));
+        game.logics
+            .collision
+            .handle_predicate(&CollisionReaction::SetVel(idx, *data.vel));
     }
 }
 
@@ -302,7 +328,7 @@ fn collision(game: &mut Game) {
     let mut ans = game.logics.collision.data_iter();
 
     while let Some((idx, data)) = ans.next() {
-        if idx > paddles_len + walls_len {
+        if idx >= paddles_len + walls_len {
             let idx = idx - paddles_len - walls_len;
             game.logics
                 .physics
@@ -368,5 +394,4 @@ pub fn draw(game: &mut Game) {
         game.draw.update_rect(i, rect);
     }
     game.draw.draw();
-    // draw_text(&get_fps().to_string(), 0.0, 16.0, 16.0, BLACK);
 }

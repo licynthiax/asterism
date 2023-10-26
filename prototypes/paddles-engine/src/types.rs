@@ -1,10 +1,10 @@
 use macroquad::{input::KeyCode, math::Vec2};
 
-/// generates identifier structs (i got tired of typing all of them out). example: `id_impl_new!([derive(PartialOrd, Ord)] ScoreID)` expands out to
+/// generates identifier unit structs. example: `id_impl_new!([derive(PartialOrd, Ord)] ScoreID)` expands out to
 ///
 /// ```
 /// #[derive(PartialOrd, Ord)]
-/// #[derive(Clone, Copy, PartialEq, Eq)]
+/// #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 /// pub struct ScoreID(usize);
 /// impl ScoreID {
 ///     pub fn new(idx: usize) -> Self {
@@ -19,7 +19,7 @@ macro_rules! id_impl_new {
     ($([$($derive:meta)*] $id_type:ident),*) => {
         $(
             $(#[$derive])*
-            #[derive(Clone, Copy, PartialEq, Eq)]
+            #[derive(Clone, Copy, PartialEq, Eq, Debug)]
             pub struct $id_type(usize);
 
             impl $id_type {
@@ -35,21 +35,7 @@ macro_rules! id_impl_new {
     };
 }
 
-id_impl_new!([] PaddleID, [] WallID, [] BallID, [derive(PartialOrd, Ord, Debug)] ScoreID, [derive(PartialOrd, Ord, Debug)] ActionID);
-
-#[derive(Hash, Eq, PartialEq, Debug, Clone, Copy)]
-#[allow(dead_code)]
-pub enum QueryType {
-    CtrlEvent,
-    CtrlIdent,
-    ColEvent,
-    ColIdent,
-    PhysEvent,
-    PhysIdent,
-    RsrcEvent,
-    RsrcIdent,
-    BallCol,
-}
+id_impl_new!([] PaddleID, [] WallID, [] BallID, [derive(PartialOrd, Ord)] ScoreID, [derive(PartialOrd, Ord)] ActionID);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum CollisionEnt {

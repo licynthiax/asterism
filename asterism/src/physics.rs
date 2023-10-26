@@ -161,10 +161,10 @@ impl<'phys> LendingIterator for PtPhysicsDataIter<'phys> {
     type Item<'a> = (<PointPhysics as Logic>::Ident, <PointPhysics as Logic>::IdentData<'a>) where Self: 'a;
 
     fn next(&mut self) -> Option<Self::Item<'_>> {
-        self.count += 1;
         if self.count == self.physics.positions.len() {
             None
         } else {
+            self.count += 1;
             Some((self.count - 1, self.physics.get_ident_data(self.count - 1)))
         }
     }

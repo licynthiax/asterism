@@ -28,13 +28,11 @@ async fn main() {
 
 fn init(game: &mut Game) {
     // ball
-    let ball = Ball::new(
-        Vec2::new(
-            WIDTH as f32 / 2.0 - BALL_SIZE as f32 / 2.0,
-            HEIGHT as f32 / 2.0 - BALL_SIZE as f32 / 2.0,
-        ),
-        Vec2::new(BALL_SIZE as f32, BALL_SIZE as f32),
+    let center = Vec2::new(
+        WIDTH as f32 / 2.0 - BALL_SIZE as f32 / 2.0,
+        HEIGHT as f32 / 2.0 - BALL_SIZE as f32 / 2.0,
     );
+    let ball = Ball::new(center, Vec2::new(BALL_SIZE as f32, BALL_SIZE as f32));
     let ball = game.add_ball(ball);
 
     // walls
@@ -49,12 +47,12 @@ fn init(game: &mut Game) {
         Vec2::new(1.0, HEIGHT as f32),
     ));
     // top
-    game.add_wall(Wall::new(
+    let top_wall = game.add_wall(Wall::new(
         Vec2::new(0.0, -1.0),
         Vec2::new(WIDTH as f32, 1.0),
     ));
     // bottom
-    game.add_wall(Wall::new(
+    let bottom_wall = game.add_wall(Wall::new(
         Vec2::new(0.0, HEIGHT as f32),
         Vec2::new(WIDTH as f32, 1.0),
     ));
@@ -91,19 +89,19 @@ fn init(game: &mut Game) {
     // paddle movement
     game.events.add_ctrl_event(
         EngineCtrlEvent::MovePaddle(paddle1, action_q),
-        EngineAction::MovePaddleBy(paddle1, Vec2::new(0.0, 1.0)),
-    );
-    game.events.add_ctrl_event(
-        EngineCtrlEvent::MovePaddle(paddle1, action_a),
         EngineAction::MovePaddleBy(paddle1, Vec2::new(0.0, -1.0)),
     );
     game.events.add_ctrl_event(
+        EngineCtrlEvent::MovePaddle(paddle1, action_a),
+        EngineAction::MovePaddleBy(paddle1, Vec2::new(0.0, 1.0)),
+    );
+    game.events.add_ctrl_event(
         EngineCtrlEvent::MovePaddle(paddle2, action_o),
-        EngineAction::MovePaddleBy(paddle2, Vec2::new(0.0, 1.0)),
+        EngineAction::MovePaddleBy(paddle2, Vec2::new(0.0, -1.0)),
     );
     game.events.add_ctrl_event(
         EngineCtrlEvent::MovePaddle(paddle2, action_l),
-        EngineAction::MovePaddleBy(paddle2, Vec2::new(0.0, -1.0)),
+        EngineAction::MovePaddleBy(paddle2, Vec2::new(0.0, 1.0)),
     );
 
     // serving
@@ -134,6 +132,14 @@ fn init(game: &mut Game) {
         EngineCollisionEvent::BallScoreWallCollide(ball, left_wall),
         EngineAction::ChangeScore(score2, 1),
     );
+    game.events.add_col_event(
+        EngineCollisionEvent::BallScoreWallCollide(ball, left_wall),
+        EngineAction::SetBallPos(ball, center),
+    );
+    game.events.add_col_event(
+        EngineCollisionEvent::BallScoreWallCollide(ball, left_wall),
+        EngineAction::SetBallVel(ball, Vec2::ZERO),
+    );
 
     game.events.add_col_event(
         EngineCollisionEvent::BallScoreWallCollide(ball, right_wall),
@@ -143,6 +149,32 @@ fn init(game: &mut Game) {
         EngineCollisionEvent::BallScoreWallCollide(ball, left_wall),
         EngineAction::SetKeyValid(paddle2, action_i),
     );
+
+    game.events.add_col_event(
+        EngineCollisionEvent::BallScoreWallCollide(ball, right_wall),
+        EngineAction::SetBallPos(ball, center),
+    );
+    game.events.add_col_event(
+        EngineCollisionEvent::BallScoreWallCollide(ball, right_wall),
+        EngineAction::SetBallVel(ball, Vec2::ZERO),
+    );
+
+    game.events.add_col_event(
+        EngineCollisionEvent::BallPaddleCollide(ball, paddle1),
+        EngineAction::BounceBall(ball, EntID::Paddle(paddle1)),
+    );
+    game.events.add_col_event(
+        EngineCollisionEvent::BallPaddleCollide(ball, paddle2),
+        EngineAction::BounceBall(ball, EntID::Paddle(paddle2)),
+    );
+
+    let walls = [right_wall, left_wall, top_wall, bottom_wall];
+    for wall in walls {
+        game.events.add_col_event(
+            EngineCollisionEvent::BallWallCollide(ball, wall),
+            EngineAction::BounceBall(ball, EntID::Wall(wall)),
+        );
+    }
 
     /* let bounce_ball = |ColEvent { i, j, .. }, state: &mut State, logics: &mut Logics| {
         let id = state.get_id(i);

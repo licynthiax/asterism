@@ -194,10 +194,10 @@ where
         Self: 'a;
 
     fn next(&mut self) -> Option<Self::Item<'_>> {
-        self.count += 1;
         if self.count == self.ent_state.graphs.len() {
             None
         } else {
+            self.count += 1;
             Some((
                 self.count - 1,
                 self.ent_state.get_ident_data(self.count - 1),

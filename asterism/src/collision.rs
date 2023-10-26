@@ -235,6 +235,10 @@ impl<ID: Copy + Eq + 'static> Logic for AabbCollision<ID> {
 
     fn handle_predicate(&mut self, reaction: &Self::Reaction) {
         match reaction {
+            CollisionReaction::SetCenter(idx, center) => {
+                let idx = *idx;
+                self.centers[idx] = *center;
+            }
             CollisionReaction::SetPos(idx, pos) => {
                 let idx = *idx;
                 self.centers[idx] = *pos + self.half_sizes[idx];
@@ -295,9 +299,10 @@ impl<ID: Copy + Eq + 'static> Logic for AabbCollision<ID> {
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum CollisionReaction<ID> {
-    /// sets the position, _not_ the center
+    /// sets the center
+    SetCenter(usize, Vec2),
     SetPos(usize, Vec2),
-    /// sets the size, _not_ the half size
+    /// sets half size
     SetSize(usize, Vec2),
     SetVel(usize, Vec2),
     /// sets the metadata for the given entity: `SetMetadata(entity_index, solid, fixed)`
@@ -353,10 +358,10 @@ where
         Self: 'a;
 
     fn next(&mut self) -> Option<Self::Item<'_>> {
-        self.count += 1;
         if self.count == self.collision.centers.len() {
             None
         } else {
+            self.count += 1;
             Some((
                 self.count - 1,
                 self.collision.get_ident_data(self.count - 1),
