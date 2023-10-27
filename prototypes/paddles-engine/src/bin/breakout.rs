@@ -28,14 +28,13 @@ async fn main() {
 
 fn init(game: &mut Game) {
     // ball
-    let ball = Ball::new(
+    let ball = game.add_ball(Ball::new(
         Vec2::new(
             WIDTH as f32 / 2.0 - BALL_SIZE as f32 / 2.0,
             HEIGHT as f32 - PADDLE_OFF_X as f32 * 2.0,
         ),
         Vec2::new(BALL_SIZE as f32, BALL_SIZE as f32),
-    );
-    game.add_ball(ball);
+    ));
 
     // walls
     // left
@@ -60,15 +59,9 @@ fn init(game: &mut Game) {
     ));
 
     // blocks
-    let block_size = Vec2::new(32.0, 16.0);
-    (0..5).for_each(|y| {
-        (0..8).for_each(|x| {
-            game.add_wall(Wall::new(
-                Vec2::new(x as f32 * 32.0, y as f32 * 16.0),
-                block_size,
-            ));
-        })
-    });
+    for block in add_blocks() {
+        game.add_wall(block);
+    }
 
     // paddle 1
     let mut paddle = Paddle::new(
@@ -119,6 +112,16 @@ fn init(game: &mut Game) {
             .control
             .handle_predicate(&ControlReaction::SetKeyValid(0, action_serve));
     };
+}
+
+// differentiate between walls and blocks?
+fn add_blocks() -> Vec<Wall> {
+    let block_size = Vec2::new(32.0, 16.0);
+    (0..5)
+        .flat_map(|y| {
+            (0..8).map(move |x| Wall::new(Vec2::new(x as f32 * 32.0, y as f32 * 16.0), block_size))
+        })
+        .collect()
 }
 
 /* paddles_engine::rules!(game =>

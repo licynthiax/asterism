@@ -8,19 +8,21 @@ pub enum EngineCtrlEvent {
     ServePressed(PaddleID, ActionID),
 }
 
+// how do we deal with "do x when something hits a wall (generic but maybe we have ot do
+// something that deals with the wall)"
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub enum EngineCollisionEvent {
     BallPaddleCollide(BallID, PaddleID),
     BallWallCollide(BallID, WallID),
     BallScoreWallCollide(BallID, WallID),
-    PaddleCollisions,
-    WallCollisions,
+    PaddleCollisions(BallID),
+    WallCollisions(BallID),
 }
 
 #[derive(Clone, Debug)]
 pub enum EngineAction {
     // can only bounce between balls, walls, and paddles
-    BounceBall(BallID, crate::EntID),
+    BounceBall(BallID, Option<crate::EntID>),
     SetBallVel(BallID, Vec2),
     SetBallPos(BallID, Vec2),
     SetPaddlePos(PaddleID, Vec2),
@@ -37,14 +39,17 @@ impl EngineAction {
         match self {
             Self::BounceBall(ball, ent) => {
                 let ball_idx = state.get_col_idx(ball.idx(), CollisionEnt::Ball);
-                let ent_idx = match ent {
+                let ent_idx = match ent
+                    .unwrap_or_else(|| panic!["no entity to be bounced off given!"])
+                {
                     crate::EntID::Wall(wall) => state.get_col_idx(wall.idx(), CollisionEnt::Wall),
                     crate::EntID::Ball(ball) => state.get_col_idx(ball.idx(), CollisionEnt::Ball),
                     crate::EntID::Paddle(paddle) => {
                         state.get_col_idx(paddle.idx(), CollisionEnt::Paddle)
                     }
-                    crate::EntID::Score(_) => panic!("cannot bounce off a score"),
+                    crate::EntID::Score(_) => panic!("cannot bounce off a score!"),
                 };
+
                 let sides_touched = logics.collision.sides_touched(ball_idx, ent_idx);
 
                 let vals = logics.physics.get_ident_data(ball.idx());

@@ -47,12 +47,12 @@ fn init(game: &mut Game) {
         Vec2::new(1.0, HEIGHT as f32),
     ));
     // top
-    let top_wall = game.add_wall(Wall::new(
+    game.add_wall(Wall::new(
         Vec2::new(0.0, -1.0),
         Vec2::new(WIDTH as f32, 1.0),
     ));
     // bottom
-    let bottom_wall = game.add_wall(Wall::new(
+    game.add_wall(Wall::new(
         Vec2::new(0.0, HEIGHT as f32),
         Vec2::new(WIDTH as f32, 1.0),
     ));
@@ -161,131 +161,15 @@ fn init(game: &mut Game) {
 
     game.events.add_col_event(
         EngineCollisionEvent::BallPaddleCollide(ball, paddle1),
-        EngineAction::BounceBall(ball, EntID::Paddle(paddle1)),
+        EngineAction::BounceBall(ball, Some(EntID::Paddle(paddle1))),
     );
     game.events.add_col_event(
         EngineCollisionEvent::BallPaddleCollide(ball, paddle2),
-        EngineAction::BounceBall(ball, EntID::Paddle(paddle2)),
+        EngineAction::BounceBall(ball, Some(EntID::Paddle(paddle2))),
     );
 
-    let walls = [right_wall, left_wall, top_wall, bottom_wall];
-    for wall in walls {
-        game.events.add_col_event(
-            EngineCollisionEvent::BallWallCollide(ball, wall),
-            EngineAction::BounceBall(ball, EntID::Wall(wall)),
-        );
-    }
-
-    /* let bounce_ball = |ColEvent { i, j, .. }, state: &mut State, logics: &mut Logics| {
-        let id = state.get_id(i);
-        if let EntID::Ball(ball_id) = id {
-            let sides_touched = logics.collision.sides_touched(i, j);
-            let mut vals = logics.physics.get_ident_data(ball_id.idx());
-            if sides_touched.y != 0.0 {
-                vals.vel.y *= -1.0;
-            }
-            if sides_touched.x != 0.0 {
-                vals.vel.x *= -1.0;
-            }
-        }
-    }; */
-
-    /*    paddles_engine::rules!(game =>
-        control: [
-            {
-                filter move_paddle,
-                QueryType::CtrlEvent => CtrlEvent,
-                |ctrl, _, _| {
-                    ctrl.event_type == ControlEventType::KeyHeld
-                },
-                foreach |ctrl, _, logics| {
-                    if ctrl.action_id == action_q || ctrl.action_id == action_o {
-                        move_up(logics, ctrl.set);
-                    } else if ctrl.action_id == action_a || ctrl.action_id == action_l {
-                        move_down(logics, ctrl.set);
-                    }
-                }
-            },
-            {
-                filter serve,
-                QueryType::CtrlEvent => CtrlEvent,
-                |ctrl, _, _| {
-                    ctrl.event_type == ControlEventType::KeyPressed && (ctrl.action_id == action_w || ctrl.action_id == action_i)
-                },
-                foreach |ctrl, _, logics| {
-                    serve_ball(logics, ctrl.set);
-                }
-            }
-        ]
-
-        physics: []
-
-        collision: [
-            {
-                filter bounce,
-                QueryType::ColEvent => ColEvent,
-                |(i, j), _, logics| {
-                    let i_id = logics.collision.metadata[*i].id;
-                    let j_id = logics.collision.metadata[*j].id;
-                    i_id == CollisionEnt::Ball &&
-                        (j_id == CollisionEnt::Wall || j_id == CollisionEnt::Paddle)
-                },
-                foreach |col, state, logics| {
-                    bounce_ball(col, state, logics);
-                }
-            },
-            {
-                filter score,
-                QueryType::ColEvent => ColEvent,
-                |(i, j), state, logics| {
-                    let i_id = logics.collision.metadata[*i].id;
-                    i_id == CollisionEnt::Ball &&
-                        (*j == state.get_col_idx(left_wall.idx(), CollisionEnt::Wall) || *j == state.get_col_idx(right_wall.idx(), CollisionEnt::Wall))
-                },
-                foreach |(_, j), state, logics| {
-                    if *j == state.get_col_idx(left_wall.idx(), CollisionEnt::Wall) {
-                        inc_score(logics, 1);
-                    } else if *j == state.get_col_idx(right_wall.idx(), CollisionEnt::Wall) {
-                        inc_score(logics, 0);
-                    } else {
-                        unreachable!();
-                    }
-                }
-            }
-        ]
-
-        resources: [
-            {
-                filter score_increased,
-                QueryType::RsrcEvent => RsrcEvent,
-                |pool, _, _| {
-                    pool.event_type == ResourceEventType::PoolUpdated
-                },
-                foreach |event, _, logics| {
-                    let RsrcPool::Score(score) = event.pool;
-
-                    println!(
-                        "p{} scored: {}",
-                        score.idx() + 1,
-                        logics.resources.get_ident_data(event.pool).0
-                    );
-                    logics
-                        .physics
-                        .handle_predicate(&PhysicsReaction::SetVel(0, Vec2::ZERO));
-
-                    logics.physics.handle_predicate(&PhysicsReaction::SetPos(
-                        0,
-                        Vec2::splat(WIDTH as f32 / 2.0 - BALL_SIZE as f32 / 2.0),
-                    ));
-
-                    logics
-                        .control
-                        .handle_predicate(&ControlReaction::SetKeyValid(
-                            score.idx(),
-                            match_set!(score.idx(), action_w, action_i),
-                        ));
-                }
-            }
-        ]
-    );*/
+    game.events.add_col_event(
+        EngineCollisionEvent::WallCollisions(ball),
+        EngineAction::BounceBall(ball, None),
+    );
 }

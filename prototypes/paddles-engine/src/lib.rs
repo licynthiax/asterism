@@ -2,6 +2,7 @@
 #![allow(clippy::upper_case_acronyms)]
 
 use asterism::{
+    collision::Contact,
     control::{KeyboardControl, MacroquadInputWrapper},
     graphics::draw::{self, Draw},
     physics::PointPhysics,
@@ -339,7 +340,7 @@ fn collision(game: &mut Game) {
         }
     }
 
-    for (event_data, actions) in game.events.collision.iter() {
+    for (event_data, actions) in game.events.collision.iter_mut() {
         let events = game.logics.collision.events();
         match event_data {
             EngineCollisionEvent::BallPaddleCollide(ball, paddle) => {
@@ -354,6 +355,7 @@ fn collision(game: &mut Game) {
             }
             EngineCollisionEvent::BallWallCollide(ball, wall) => {
                 let ball_idx = game.state.get_col_idx(ball.idx(), CollisionEnt::Ball);
+
                 let wall_idx = game.state.get_col_idx(wall.idx(), CollisionEnt::Wall);
                 let relevant = events.iter().any(|e| ball_idx == e.i && wall_idx == e.j);
                 if relevant {
@@ -372,11 +374,62 @@ fn collision(game: &mut Game) {
                     }
                 }
             }
-            EngineCollisionEvent::PaddleCollisions => {
-                // how would i deal with stuff like "filter on all walls"???
-                // let relevant = events.iter().filter_map(|e|)
+            EngineCollisionEvent::PaddleCollisions(ball) => {
+                let ball_idx = game.state.get_col_idx(ball.idx(), CollisionEnt::Ball);
+                let paddles_len = game.state.paddles.len();
+                let relevant = events
+                    .iter()
+                    .filter_map(|&e| {
+                        if ball_idx == e.i && e.j < paddles_len {
+                            Some(e)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<Contact>>();
+
+                for Contact { j: wall, .. } in relevant {
+                    for action in actions.iter() {
+                        match action {
+                            EngineAction::BounceBall(ball, None) => {
+                                EngineAction::BounceBall(
+                                    *ball,
+                                    Some(EntID::Wall(WallID::new(wall))),
+                                )
+                                .perform_action(&mut game.state, &mut game.logics);
+                            }
+                            _ => action.perform_action(&mut game.state, &mut game.logics),
+                        }
+                    }
+                }
             }
-            EngineCollisionEvent::WallCollisions => {}
+            EngineCollisionEvent::WallCollisions(ball) => {
+                let ball_idx = game.state.get_col_idx(ball.idx(), CollisionEnt::Ball);
+                let paddles_len = game.state.paddles.len();
+                let walls_len = game.state.walls.len();
+                let relevant = events
+                    .iter()
+                    .filter_map(|&e| {
+                        if ball_idx == e.i && e.j >= paddles_len && e.j < paddles_len + walls_len {
+                            Some(e)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<Contact>>();
+
+                for Contact { j: wall, .. } in relevant {
+                    for action in actions.iter() {
+                        match action {
+                            EngineAction::BounceBall(ball, None) => {
+                                EngineAction::BounceBall(*ball, Some(game.state.get_id(wall)))
+                                    .perform_action(&mut game.state, &mut game.logics);
+                            }
+                            _ => action.perform_action(&mut game.state, &mut game.logics),
+                        }
+                    }
+                }
+            }
         }
     }
 }
