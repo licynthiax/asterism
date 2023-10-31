@@ -124,52 +124,52 @@ fn init(game: &mut Game) {
     );
 
     // increase score on collision with side wall
-    game.events.add_col_event(
-        EngineCollisionEvent::BallScoreWallCollide(ball, right_wall),
-        EngineAction::ChangeScore(score1, 1),
-    );
-    game.events.add_col_event(
-        EngineCollisionEvent::BallScoreWallCollide(ball, left_wall),
-        EngineAction::ChangeScore(score2, 1),
-    );
-    game.events.add_col_event(
-        EngineCollisionEvent::BallScoreWallCollide(ball, left_wall),
-        EngineAction::SetBallPos(ball, center),
-    );
-    game.events.add_col_event(
-        EngineCollisionEvent::BallScoreWallCollide(ball, left_wall),
-        EngineAction::SetBallVel(ball, Vec2::ZERO),
+    game.events.add_col_events(
+        EngineCollisionEvent::Match(
+            Some(CollisionEventMatch::ByID(ball.into())),
+            Some(CollisionEventMatch::ByID(right_wall.into())),
+        ),
+        &[
+            EngineAction::ChangeScore(score1, 1),
+            EngineAction::SetKeyValid(paddle1, action_w),
+            EngineAction::SetBallPos(ball, center),
+            EngineAction::SetBallVel(ball, Vec2::ZERO),
+        ],
     );
 
-    game.events.add_col_event(
-        EngineCollisionEvent::BallScoreWallCollide(ball, right_wall),
-        EngineAction::SetKeyValid(paddle1, action_w),
-    );
-    game.events.add_col_event(
-        EngineCollisionEvent::BallScoreWallCollide(ball, left_wall),
-        EngineAction::SetKeyValid(paddle2, action_i),
-    );
-
-    game.events.add_col_event(
-        EngineCollisionEvent::BallScoreWallCollide(ball, right_wall),
-        EngineAction::SetBallPos(ball, center),
-    );
-    game.events.add_col_event(
-        EngineCollisionEvent::BallScoreWallCollide(ball, right_wall),
-        EngineAction::SetBallVel(ball, Vec2::ZERO),
+    game.events.add_col_events(
+        EngineCollisionEvent::Match(
+            Some(CollisionEventMatch::ByID(ball.into())),
+            Some(CollisionEventMatch::ByID(left_wall.into())),
+        ),
+        &[
+            EngineAction::ChangeScore(score2, 1),
+            EngineAction::SetKeyValid(paddle2, action_i),
+            EngineAction::SetBallPos(ball, center),
+            EngineAction::SetBallVel(ball, Vec2::ZERO),
+        ],
     );
 
-    game.events.add_col_event(
-        EngineCollisionEvent::BallPaddleCollide(ball, paddle1),
-        EngineAction::BounceBall(ball, Some(EntID::Paddle(paddle1))),
+    game.events.add_col_events(
+        EngineCollisionEvent::Match(
+            Some(CollisionEventMatch::ByID(ball.into())),
+            Some(CollisionEventMatch::ByID(paddle1.into())),
+        ),
+        &[EngineAction::BounceBall(ball, Some(EntID::Paddle(paddle1)))],
     );
-    game.events.add_col_event(
-        EngineCollisionEvent::BallPaddleCollide(ball, paddle2),
-        EngineAction::BounceBall(ball, Some(EntID::Paddle(paddle2))),
+    game.events.add_col_events(
+        EngineCollisionEvent::Match(
+            Some(CollisionEventMatch::ByID(ball.into())),
+            Some(CollisionEventMatch::ByID(paddle2.into())),
+        ),
+        &[EngineAction::BounceBall(ball, Some(EntID::Paddle(paddle2)))],
     );
 
-    game.events.add_col_event(
-        EngineCollisionEvent::WallCollisions(ball),
-        EngineAction::BounceBall(ball, None),
+    game.events.add_col_events(
+        EngineCollisionEvent::Match(
+            Some(CollisionEventMatch::ByID(ball.into())),
+            Some(CollisionEventMatch::ByType(CollisionEnt::Wall)),
+        ),
+        &[EngineAction::BounceBall(ball, None)],
     );
 }

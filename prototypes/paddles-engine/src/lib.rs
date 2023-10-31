@@ -49,6 +49,47 @@ pub enum EntID {
     Score(ScoreID),
 }
 
+impl EntID {
+    pub fn get_col_type(&self) -> CollisionEnt {
+        match self {
+            Self::Ball(_) => CollisionEnt::Ball,
+            Self::Paddle(_) => CollisionEnt::Paddle,
+            Self::Wall(_) => CollisionEnt::Wall,
+            Self::Score(_) => {
+                panic!("can't collide with a score!")
+            }
+        }
+    }
+
+    fn get_idx(&self) -> usize {
+        match self {
+            EntID::Wall(id) => id.idx(),
+            EntID::Ball(id) => id.idx(),
+            EntID::Paddle(id) => id.idx(),
+            EntID::Score(id) => id.idx(),
+        }
+    }
+
+    pub fn get_ball(&self) -> Option<BallID> {
+        match self {
+            Self::Ball(id) => Some(*id),
+            _ => None,
+        }
+    }
+    pub fn get_wall(&self) -> Option<WallID> {
+        match self {
+            Self::Wall(id) => Some(*id),
+            _ => None,
+        }
+    }
+    pub fn get_paddle(&self) -> Option<PaddleID> {
+        match self {
+            Self::Paddle(id) => Some(*id),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub enum Ent {
     Wall(Wall),
@@ -84,15 +125,15 @@ pub struct State {
 }
 
 impl State {
-    pub fn get_col_idx(&self, i: usize, col: CollisionEnt) -> usize {
-        match col {
+    pub fn get_col_idx(&self, id: EntID) -> usize {
+        let i = id.get_idx();
+        match id.get_col_type() {
             CollisionEnt::Paddle => i,
             CollisionEnt::Wall => i + self.paddles.len(),
             CollisionEnt::Ball => i + self.paddles.len() + self.walls.len(),
         }
     }
 
-    // i hope this logic is correct...
     pub fn get_id(&self, idx: usize) -> EntID {
         let mut idx = idx as isize;
         if idx - (self.paddles.len() as isize) < 0 {
@@ -309,7 +350,7 @@ fn physics(game: &mut Game) {
 
     // update physics positions to collision
     while let Some((idx, data)) = ans.next() {
-        let idx = game.state.get_col_idx(idx, CollisionEnt::Ball);
+        let idx = game.state.get_col_idx(EntID::Ball(BallID::new(idx)));
 
         game.logics
             .collision
@@ -340,94 +381,84 @@ fn collision(game: &mut Game) {
         }
     }
 
-    for (event_data, actions) in game.events.collision.iter_mut() {
-        let events = game.logics.collision.events();
-        match event_data {
-            EngineCollisionEvent::BallPaddleCollide(ball, paddle) => {
-                let ball_idx = game.state.get_col_idx(ball.idx(), CollisionEnt::Ball);
-                let paddle_idx = game.state.get_col_idx(paddle.idx(), CollisionEnt::Paddle);
-                let relevant = events.iter().any(|e| ball_idx == e.i && paddle_idx == e.j);
-                if relevant {
-                    for action in actions {
-                        action.perform_action(&mut game.state, &mut game.logics);
-                    }
-                }
-            }
-            EngineCollisionEvent::BallWallCollide(ball, wall) => {
-                let ball_idx = game.state.get_col_idx(ball.idx(), CollisionEnt::Ball);
+    for (event_data, actions) in game.events.collision.iter() {
+        let events = game.logics.collision.events().iter();
 
-                let wall_idx = game.state.get_col_idx(wall.idx(), CollisionEnt::Wall);
-                let relevant = events.iter().any(|e| ball_idx == e.i && wall_idx == e.j);
-                if relevant {
-                    for action in actions {
-                        action.perform_action(&mut game.state, &mut game.logics);
-                    }
+        // "how should we filter these events?"
+        let events: Vec<Contact> = match event_data {
+            EngineCollisionEvent::All => events.copied().collect(),
+            EngineCollisionEvent::Match(fst, snd) => match (fst, snd) {
+                (Some(CollisionEventMatch::ByID(id1)), Some(CollisionEventMatch::ByID(id2))) => {
+                    events
+                        .filter(|Contact { i, j, .. }| {
+                            game.state.get_col_idx(*id1) == *i && game.state.get_col_idx(*id2) == *j
+                        })
+                        .copied()
+                        .collect()
                 }
-            }
-            EngineCollisionEvent::BallScoreWallCollide(ball, score_wall) => {
-                let ball_idx = game.state.get_col_idx(ball.idx(), CollisionEnt::Ball);
-                let wall_idx = game.state.get_col_idx(score_wall.idx(), CollisionEnt::Wall);
-                let relevant = events.iter().any(|e| ball_idx == e.i && wall_idx == e.j);
-                if relevant {
-                    for action in actions {
-                        action.perform_action(&mut game.state, &mut game.logics);
-                    }
-                }
-            }
-            EngineCollisionEvent::PaddleCollisions(ball) => {
-                let ball_idx = game.state.get_col_idx(ball.idx(), CollisionEnt::Ball);
-                let paddles_len = game.state.paddles.len();
-                let relevant = events
-                    .iter()
-                    .filter_map(|&e| {
-                        if ball_idx == e.i && e.j < paddles_len {
-                            Some(e)
-                        } else {
-                            None
-                        }
+                (
+                    Some(CollisionEventMatch::ByID(id1)),
+                    Some(CollisionEventMatch::ByType(type2)),
+                ) => events
+                    .filter(|Contact { i, j, .. }| {
+                        game.state.get_col_idx(*id1) == *i
+                            && game.state.get_id(*j).get_col_type() == *type2
                     })
-                    .collect::<Vec<Contact>>();
-
-                for Contact { j: wall, .. } in relevant {
-                    for action in actions.iter() {
-                        match action {
-                            EngineAction::BounceBall(ball, None) => {
-                                EngineAction::BounceBall(
-                                    *ball,
-                                    Some(EntID::Wall(WallID::new(wall))),
-                                )
-                                .perform_action(&mut game.state, &mut game.logics);
-                            }
-                            _ => action.perform_action(&mut game.state, &mut game.logics),
-                        }
-                    }
-                }
-            }
-            EngineCollisionEvent::WallCollisions(ball) => {
-                let ball_idx = game.state.get_col_idx(ball.idx(), CollisionEnt::Ball);
-                let paddles_len = game.state.paddles.len();
-                let walls_len = game.state.walls.len();
-                let relevant = events
-                    .iter()
-                    .filter_map(|&e| {
-                        if ball_idx == e.i && e.j >= paddles_len && e.j < paddles_len + walls_len {
-                            Some(e)
-                        } else {
-                            None
-                        }
+                    .copied()
+                    .collect(),
+                (Some(CollisionEventMatch::ByID(id1)), None) => events
+                    .filter(|Contact { i, .. }| game.state.get_col_idx(*id1) == *i)
+                    .copied()
+                    .collect(),
+                (
+                    Some(CollisionEventMatch::ByType(type1)),
+                    Some(CollisionEventMatch::ByID(id2)),
+                ) => events
+                    .filter(|Contact { i, j, .. }| {
+                        game.state.get_id(*i).get_col_type() == *type1
+                            && game.state.get_col_idx(*id2) == *j
                     })
-                    .collect::<Vec<Contact>>();
+                    .copied()
+                    .collect(),
+                (
+                    Some(CollisionEventMatch::ByType(type1)),
+                    Some(CollisionEventMatch::ByType(type2)),
+                ) => events
+                    .filter(|Contact { i, j, .. }| {
+                        game.state.get_id(*i).get_col_type() == *type1
+                            && game.state.get_id(*j).get_col_type() == *type2
+                    })
+                    .copied()
+                    .collect(),
+                (Some(CollisionEventMatch::ByType(type1)), None) => events
+                    .filter(|Contact { i, .. }| game.state.get_id(*i).get_col_type() == *type1)
+                    .copied()
+                    .collect(),
+                (None, Some(CollisionEventMatch::ByID(id2))) => events
+                    .filter(|Contact { j, .. }| game.state.get_col_idx(*id2) == *j)
+                    .copied()
+                    .collect(),
+                (None, Some(CollisionEventMatch::ByType(type2))) => events
+                    .filter(|Contact { j, .. }| game.state.get_id(*j).get_col_type() == *type2)
+                    .copied()
+                    .collect(),
+                (None, None) => events.copied().collect(),
+            },
+            EngineCollisionEvent::Filter(filter) => events
+                .filter(|Contact { i, j, .. }| filter(game.state.get_id(*i), game.state.get_id(*j)))
+                .copied()
+                .collect(),
+        };
 
-                for Contact { j: wall, .. } in relevant {
-                    for action in actions.iter() {
-                        match action {
-                            EngineAction::BounceBall(ball, None) => {
-                                EngineAction::BounceBall(*ball, Some(game.state.get_id(wall)))
-                                    .perform_action(&mut game.state, &mut game.logics);
-                            }
-                            _ => action.perform_action(&mut game.state, &mut game.logics),
-                        }
+        for event in events {
+            for action in actions.iter() {
+                match action {
+                    EngineAction::BounceBall(ball, None) => {
+                        let j = game.state.get_id(event.j);
+                        EngineAction::BounceBall(*ball, Some(j))
+                            .perform_action(&mut game.state, &mut game.logics)
                     }
+                    _ => action.perform_action(&mut game.state, &mut game.logics),
                 }
             }
         }

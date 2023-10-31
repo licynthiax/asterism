@@ -16,7 +16,7 @@ use macroquad::{input::KeyCode, math::Vec2};
 /// }
 /// ```
 macro_rules! id_impl_new {
-    ($([$($derive:meta)*] $id_type:ident),*) => {
+    ($([$($derive:meta)*] $id_type:ident $($entid_name:ident)?),*) => {
         $(
             $(#[$derive])*
             #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -31,11 +31,17 @@ macro_rules! id_impl_new {
                     self.0
                 }
             }
+
+            $(impl From<$id_type> for crate::EntID {
+                fn from(value: $id_type) -> Self {
+                    Self::$entid_name(value)
+                }
+            })?
         )*
     };
 }
 
-id_impl_new!([] PaddleID, [] WallID, [] BallID, [derive(PartialOrd, Ord)] ScoreID, [derive(PartialOrd, Ord)] ActionID);
+id_impl_new!([] PaddleID Paddle, [] WallID Wall, [] BallID Ball, [derive(PartialOrd, Ord)] ScoreID Score, [derive(PartialOrd, Ord)] ActionID);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum CollisionEnt {

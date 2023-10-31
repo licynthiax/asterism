@@ -10,10 +10,9 @@ use crate::Game;
 
 macro_rules! add_ent {
     (@attach $game:expr, $id:ident $gamefield:ident $ent_name:ident $ent_ty:ty; $id_ty:ty [collision: $col_data:expr]) => {
-        let col_ent = $col_data.id;
         let col_idx = $game
             .state
-            .get_col_idx($game.state.$gamefield.len(), col_ent);
+            .get_col_idx(<$id_ty>::new($game.state.$gamefield.len()).into());
 
         let collision = &mut $game.logics.collision;
         let hs = $ent_name.size / 2.0;
@@ -48,7 +47,7 @@ macro_rules! add_ent {
     (@attach $game:expr, $id:ident $gamefield:ident $ent_name:ident $ent_ty:ty; $id_ty:ty [draw: $col_ent:expr, $color:expr]) => {
         let col_idx = $game
             .state
-            .get_col_idx($game.state.$gamefield.len(), $col_ent);
+            .get_col_idx(<$id_ty>::new($game.state.$gamefield.len()).into());
 
         let rect = draw::Drawable::Rectangle(
             draw::Rect::new(
@@ -136,57 +135,57 @@ impl Game {
     }
 
     pub(crate) fn remove_paddle(&mut self, paddle: PaddleID) {
+        let col_idx = self.state.get_col_idx(paddle.into());
         let ent_idx = self
             .state
             .paddles
             .iter()
             .position(|pid| *pid == paddle)
             .unwrap();
-        let state_idx = self.state.get_col_idx(ent_idx, CollisionEnt::Paddle);
 
         self.logics.control.mapping.remove(ent_idx);
         self.logics
             .collision
-            .handle_predicate(&CollisionReaction::RemoveBody(state_idx));
+            .handle_predicate(&CollisionReaction::RemoveBody(col_idx));
 
-        self.draw.drawables.remove(state_idx);
+        self.draw.drawables.remove(col_idx);
         self.state.paddles.remove(ent_idx);
     }
 
     pub(crate) fn remove_wall(&mut self, wall: WallID) {
+        let col_idx = self.state.get_col_idx(wall.into());
         let ent_idx = self
             .state
             .walls
             .iter()
             .position(|wid| *wid == wall)
             .unwrap();
-        let state_idx = self.state.get_col_idx(ent_idx, CollisionEnt::Wall);
 
         self.logics
             .collision
-            .handle_predicate(&CollisionReaction::RemoveBody(state_idx));
+            .handle_predicate(&CollisionReaction::RemoveBody(col_idx));
 
-        self.draw.drawables.remove(state_idx);
+        self.draw.drawables.remove(col_idx);
         self.state.walls.remove(ent_idx);
     }
 
     pub(crate) fn remove_ball(&mut self, ball: BallID) {
+        let col_idx = self.state.get_col_idx(ball.into());
         let ent_idx = self
             .state
             .balls
             .iter()
             .position(|bid| *bid == ball)
             .unwrap();
-        let state_idx = self.state.get_col_idx(ent_idx, CollisionEnt::Ball);
 
         self.logics
             .physics
             .handle_predicate(&PhysicsReaction::RemoveBody(ent_idx));
         self.logics
             .collision
-            .handle_predicate(&CollisionReaction::RemoveBody(state_idx));
+            .handle_predicate(&CollisionReaction::RemoveBody(col_idx));
 
-        self.draw.drawables.remove(state_idx);
+        self.draw.drawables.remove(col_idx);
         self.state.balls.remove(ent_idx);
     }
 
