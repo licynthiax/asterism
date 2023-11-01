@@ -1,5 +1,5 @@
 use macroquad::prelude::*;
-use paddles_engine::{events::*, *};
+use paddles_engine::*;
 
 const WIDTH: u8 = 255;
 const HEIGHT: u8 = 255;
@@ -126,8 +126,8 @@ fn init(game: &mut Game) {
     // increase score on collision with side wall
     game.events.add_col_events(
         EngineCollisionEvent::Match(
-            Some(CollisionEventMatch::ByID(ball.into())),
-            Some(CollisionEventMatch::ByID(right_wall.into())),
+            CollisionEventMatch::ByID(ball.into()),
+            CollisionEventMatch::ByID(right_wall.into()),
         ),
         &[
             EngineAction::ChangeScore(score1, 1),
@@ -139,8 +139,8 @@ fn init(game: &mut Game) {
 
     game.events.add_col_events(
         EngineCollisionEvent::Match(
-            Some(CollisionEventMatch::ByID(ball.into())),
-            Some(CollisionEventMatch::ByID(left_wall.into())),
+            CollisionEventMatch::ByID(ball.into()),
+            CollisionEventMatch::ByID(left_wall.into()),
         ),
         &[
             EngineAction::ChangeScore(score2, 1),
@@ -152,23 +152,23 @@ fn init(game: &mut Game) {
 
     game.events.add_col_events(
         EngineCollisionEvent::Match(
-            Some(CollisionEventMatch::ByID(ball.into())),
-            Some(CollisionEventMatch::ByID(paddle1.into())),
+            CollisionEventMatch::ByID(ball.into()),
+            CollisionEventMatch::ByID(paddle1.into()),
         ),
         &[EngineAction::BounceBall(ball, Some(EntID::Paddle(paddle1)))],
     );
     game.events.add_col_events(
         EngineCollisionEvent::Match(
-            Some(CollisionEventMatch::ByID(ball.into())),
-            Some(CollisionEventMatch::ByID(paddle2.into())),
+            CollisionEventMatch::ByID(ball.into()),
+            CollisionEventMatch::ByID(paddle2.into()),
         ),
         &[EngineAction::BounceBall(ball, Some(EntID::Paddle(paddle2)))],
     );
 
     game.events.add_col_events(
         EngineCollisionEvent::Match(
-            Some(CollisionEventMatch::ByID(ball.into())),
-            Some(CollisionEventMatch::ByType(CollisionEnt::Wall)),
+            CollisionEventMatch::ByID(ball.into()),
+            CollisionEventMatch::ByType(CollisionEnt::Wall),
         ),
         &[EngineAction::BounceBall(ball, None)],
     );

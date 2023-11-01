@@ -127,6 +127,6 @@ pub type CtrlIdent<'a> = (usize, &'a [asterism::control::Action<ActionID, KeyCod
 pub type ColEvent = asterism::collision::Contact;
 pub type ColIdent<'a> = (usize, asterism::collision::AabbColData<'a, CollisionEnt>);
 pub type RsrcIdent = (RsrcPool, (u16, u16, u16));
-pub type RsrcEvent = asterism::resources::ResourceEvent<RsrcPool>;
+pub type RsrcEvent = asterism::resources::ResourceEvent<RsrcPool, u16>;
 pub type PhysIdent<'a> = (usize, asterism::physics::PointPhysData<'a>);
 pub type PhysEvent = asterism::physics::PhysicsEvent;

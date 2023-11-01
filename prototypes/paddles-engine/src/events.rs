@@ -9,39 +9,22 @@ pub enum EngineCtrlEvent {
 }
 
 pub enum EngineCollisionEvent {
-    All,
-    Match(Option<CollisionEventMatch>, Option<CollisionEventMatch>),
+    Match(CollisionEventMatch, CollisionEventMatch),
     Filter(Box<dyn Fn(EntID, EntID) -> bool>),
 }
 
 pub enum CollisionEventMatch {
     ByID(EntID),
     ByType(CollisionEnt),
+    All,
 }
 
-/* #[macro_export]
-macro_rules! define_collision {
-    ($game:ident, $events:ident:
-     ($coltype1:ty, $enttype1:expr) $(: $var1:ident -> $filter1:block)?,
-     ($coltype2:ty, $enttype2:expr) $(: $var2:ident -> $filter2:block)?) => {
-
-        let relevant = $events.iter();
-        $(
-            let idx1 = $game.state.get_col_idx($var1.idx(), $enttype1);
-            let relevant = relevant.filter(|e| idx1 == e.i);
-        )?
-        $(
-            let idx2 = $game.state.get_col_idx($var2.idx(), $enttype2);
-            let relevant = relevant.filter(|e| idx2 == e.j);
-        )?
-        let relevant = relevant.copied().collect::<Vec<Contact>>();
-        for rel in relevant.iter() {
-            for action in actions {
-                action.perform_action(&mut $game.state, &mut $game.logics);
-            }
-        }
-    };
-} */
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub enum EngineRsrcEvent {
+    ScoreIncreased(ScoreID),
+    ScoreReset(ScoreID),
+    ScoreEquals(ScoreID, u16),
+}
 
 #[derive(Clone, Debug)]
 pub enum EngineAction {
@@ -53,8 +36,9 @@ pub enum EngineAction {
     MovePaddleBy(PaddleID, Vec2),
     SetKeyValid(PaddleID, ActionID),
     SetKeyInvalid(PaddleID, ActionID),
+    ChangeScoreBy(ScoreID, u16),
     ChangeScore(ScoreID, u16),
-    RemoveEntity(EntID),
+    RemoveEntity(Option<EntID>),
     AddEntity(Ent),
 }
 
@@ -98,6 +82,21 @@ impl EngineAction {
             Self::ChangeScore(score, val) => {
                 logics.resources.handle_predicate(&(
                     crate::RsrcPool::Score(*score),
+                    asterism::resources::Transaction::Set(*val),
+                ));
+                println!(
+                    "score for p{} is now {}",
+                    score.idx() + 1,
+                    logics
+                        .resources
+                        .get_ident_data(crate::RsrcPool::Score(*score))
+                        .val
+                        + val
+                );
+            }
+            Self::ChangeScoreBy(score, val) => {
+                logics.resources.handle_predicate(&(
+                    crate::RsrcPool::Score(*score),
                     asterism::resources::Transaction::Change(*val),
                 ));
                 println!(
@@ -136,7 +135,10 @@ impl EngineAction {
                     .control
                     .handle_predicate(&crate::ControlReaction::SetKeyInvalid(set.idx(), *action));
             }
-            Self::RemoveEntity(ent_id) => state.queue_remove(*ent_id),
+            Self::RemoveEntity(ent_id) => {
+                let ent_id = ent_id.unwrap_or_else(|| panic!("no entity to remove given!"));
+                state.queue_remove(ent_id);
+            }
             Self::AddEntity(ent) => state.queue_add(ent.clone()),
         }
     }
@@ -145,6 +147,7 @@ impl EngineAction {
 pub struct Events {
     pub(crate) control: Vec<(EngineCtrlEvent, Vec<EngineAction>)>,
     pub(crate) collision: Vec<(EngineCollisionEvent, Vec<EngineAction>)>,
+    pub(crate) resources: Vec<(EngineRsrcEvent, Vec<EngineAction>)>,
 }
 
 impl Events {
@@ -152,6 +155,7 @@ impl Events {
         Self {
             control: Vec::new(),
             collision: Vec::new(),
+            resources: Vec::new(),
         }
     }
 
@@ -164,7 +168,33 @@ impl Events {
         }
     }
 
-    pub fn add_col_events(&mut self, event: EngineCollisionEvent, reaction: &[EngineAction]) {
-        self.collision.push((event, reaction.to_owned()));
+    pub fn add_ctrl_events(&mut self, event: EngineCtrlEvent, reactions: &[EngineAction]) {
+        if let Some(idx) = self.control.iter().position(|(e, _)| *e == event) {
+            let (_, r) = &mut self.control[idx];
+            r.append(&mut reactions.to_owned());
+        } else {
+            self.control.push((event, reactions.to_owned()));
+        }
+    }
+
+    pub fn add_col_events(&mut self, event: EngineCollisionEvent, reactions: &[EngineAction]) {
+        self.collision.push((event, reactions.to_owned()));
+    }
+
+    pub fn add_rsrc_event(&mut self, event: EngineRsrcEvent, reaction: EngineAction) {
+        if let Some(idx) = self.resources.iter().position(|(e, _)| *e == event) {
+            let (_, reactions) = &mut self.control[idx];
+            reactions.push(reaction);
+        } else {
+            self.resources.push((event, vec![reaction]));
+        }
+    }
+    pub fn add_rsrc_events(&mut self, event: EngineRsrcEvent, reactions: &[EngineAction]) {
+        if let Some(idx) = self.resources.iter().position(|(e, _)| *e == event) {
+            let (_, r) = &mut self.control[idx];
+            r.append(&mut reactions.to_owned());
+        } else {
+            self.resources.push((event, reactions.to_owned()));
+        }
     }
 }

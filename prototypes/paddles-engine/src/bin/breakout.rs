@@ -73,48 +73,99 @@ fn init(game: &mut Game) {
     );
     let left = paddle.add_control_map(KeyCode::Left, true);
     let right = paddle.add_control_map(KeyCode::Right, true);
-    let action_serve = paddle.add_control_map(KeyCode::Space, true);
-    game.add_paddle(paddle);
+    let serve = paddle.add_control_map(KeyCode::Space, true);
+    let paddle = game.add_paddle(paddle);
 
     let score = game.add_score(Score::new(0));
 
-    let reset_game = move |state: &mut State, logics: &mut Logics| {
-        let blocks = state.walls()[4..].to_vec();
-        for id in blocks.into_iter() {
-            state.queue_remove(EntID::Wall(id));
-        }
+    // define paddle controls
+    game.events.add_ctrl_events(
+        EngineCtrlEvent::ServePressed(paddle, serve),
+        &[
+            EngineAction::SetBallVel(ball, Vec2::splat(1.0)),
+            EngineAction::SetKeyInvalid(paddle, serve),
+        ],
+    );
 
-        // there are probably better ways to do this but whatever
-        let block_size = Vec2::new(32.0, 16.0);
-        (0..5).for_each(|y| {
-            (0..8).for_each(|x| {
-                let wall = Wall::new(Vec2::new(x as f32 * 32.0, y as f32 * 16.0), block_size);
-                state.queue_add(Ent::Wall(wall));
-            })
-        });
+    game.events.add_ctrl_event(
+        EngineCtrlEvent::MovePaddle(paddle, left),
+        EngineAction::MovePaddleBy(paddle, Vec2::new(-1.0, 0.0)),
+    );
+    game.events.add_ctrl_event(
+        EngineCtrlEvent::MovePaddle(paddle, right),
+        EngineAction::MovePaddleBy(paddle, Vec2::new(1.0, 0.0)),
+    );
 
-        logics
-            .physics
-            .handle_predicate(&PhysicsReaction::SetVel(0, Vec2::ZERO));
+    // bounce ball off everything
+    game.events.add_col_events(
+        EngineCollisionEvent::Match(
+            CollisionEventMatch::ByID(ball.into()),
+            CollisionEventMatch::ByType(CollisionEnt::Wall),
+        ),
+        &[EngineAction::BounceBall(ball, None)],
+    );
 
-        logics
-            .resources
-            .handle_predicate(&(RsrcPool::Score(score), Transaction::Set(0)));
+    // remove box when bounced into
+    game.events.add_col_events(
+        EngineCollisionEvent::Filter(Box::new(|id1: EntID, id2: EntID| {
+            id1.get_col_type() == CollisionEnt::Ball
+                && id2.get_col_type() == CollisionEnt::Wall
+                && id2.get_wall().unwrap().idx() >= 4
+        })),
+        &[
+            EngineAction::RemoveEntity(None),
+            EngineAction::ChangeScoreBy(score, 1),
+        ],
+    );
 
-        logics.physics.handle_predicate(&PhysicsReaction::SetPos(
-            0,
-            Vec2::new(
-                WIDTH as f32 / 2.0 - BALL_SIZE as f32 / 2.0,
-                HEIGHT as f32 - PADDLE_OFF_X as f32 * 2.0,
+    // reset score when ball hits bottom wall
+    game.events.add_col_events(
+        EngineCollisionEvent::Match(
+            CollisionEventMatch::ByID(ball.into()),
+            CollisionEventMatch::ByID(bottom_wall.into()),
+        ),
+        &[EngineAction::ChangeScore(score, 0)],
+    );
+
+    // reset score when score == 40
+    game.events.add_rsrc_event(
+        EngineRsrcEvent::ScoreEquals(score, 40),
+        EngineAction::ChangeScore(score, 0),
+    );
+
+    // score reset
+    // clear board
+    game.events.add_rsrc_event(
+        EngineRsrcEvent::ScoreReset(score),
+        // well ok this won't work bc there's no filtering on "none"
+        EngineAction::RemoveEntity(None),
+    );
+
+    // add a million blocks
+    for wall in add_blocks() {
+        game.events.add_rsrc_event(
+            EngineRsrcEvent::ScoreReset(score),
+            EngineAction::AddEntity(Ent::Wall(wall)),
+        );
+    }
+
+    // reset ball
+    game.events.add_rsrc_events(
+        EngineRsrcEvent::ScoreReset(score),
+        &[
+            EngineAction::SetBallPos(
+                ball,
+                Vec2::new(
+                    WIDTH as f32 / 2.0 - BALL_SIZE as f32 / 2.0,
+                    HEIGHT as f32 - PADDLE_OFF_X as f32 * 2.0,
+                ),
             ),
-        ));
-        logics
-            .control
-            .handle_predicate(&ControlReaction::SetKeyValid(0, action_serve));
-    };
+            EngineAction::SetBallVel(ball, Vec2::ZERO),
+            EngineAction::SetKeyValid(paddle, serve),
+        ],
+    );
 }
 
-// differentiate between walls and blocks?
 fn add_blocks() -> Vec<Wall> {
     let block_size = Vec2::new(32.0, 16.0);
     (0..5)
@@ -123,85 +174,3 @@ fn add_blocks() -> Vec<Wall> {
         })
         .collect()
 }
-
-/* paddles_engine::rules!(game =>
-        control: [
-            {
-                filter move_paddle,
-                QueryType::CtrlEvent => CtrlEvent,
-                |ctrl, _, _| {
-                    ctrl.event_type == ControlEventType::KeyHeld && ctrl.action_id != action_serve
-                },
-                foreach |ctrl, _, logics| {
-                    let mut paddle_col = logics.collision.get_ident_data(ctrl.set);
-                    if ctrl.action_id == left {
-                        paddle_col.center.x -= 1.0;
-                        paddle_col.vel.x = (paddle_col.vel.x.abs() - 1.0).max(-1.0);
-                    } else if ctrl.action_id == right {
-                        paddle_col.center.x += 1.0;
-                        paddle_col.vel.x = (paddle_col.vel.x.abs() + 1.0).min(1.0);
-                    }
-                    logics.collision.update_ident_data(ctrl.set, paddle_col);
-                }
-            },
-            {
-                filter serve,
-                QueryType::CtrlEvent => CtrlEvent,
-                |ctrl, _, _| {
-                    ctrl.event_type == ControlEventType::KeyPressed && ctrl.action_id == action_serve
-                },
-                foreach |ctrl, _, logics| {
-                    logics
-                        .physics
-                        .handle_predicate(&PhysicsReaction::SetVel(0, Vec2::splat(1.0)));
-                    logics
-                        .control
-                        .handle_predicate(&ControlReaction::SetKeyInvalid(ctrl.set, ctrl.action_id));
-                }
-            }
-        ]
-
-        physics: []
-
-        collision: [
-            {
-                filter bounce,
-                QueryType::ColEvent => ColEvent,
-                |(i, j), _, logics| {
-                    let i_id = logics.collision.metadata[*i].id;
-                    let j_id = logics.collision.metadata[*j].id;
-                    i_id == CollisionEnt::Ball &&
-                        (j_id == CollisionEnt::Wall || j_id == CollisionEnt::Paddle)
-                },
-                forfirst |col, state, logics| {
-                    bounce_ball(col, state, logics);
-                }
-            },
-            {
-                filter reset_lose,
-                QueryType::ColEvent => ColEvent,
-                |(i, j), state, logics| {
-                    let i_id = logics.collision.metadata[*i].id;
-                    i_id == CollisionEnt::Ball &&
-                        *j == state.get_col_idx(bottom_wall.idx(), CollisionEnt::Wall)
-                },
-                foreach |_, state, logics| {
-                    reset_game(state, logics);
-                }
-            }
-        ]
-
-        resources: [
-            {
-                filter reset_win,
-                QueryType::RsrcIdent => RsrcIdent,
-                |(_, (val, ..)), _, _| {
-                    *val >= 40
-                },
-                foreach |_, state, logics| {
-                    reset_game(state, logics);
-                }
-            }
-        ]
-    );
-*/

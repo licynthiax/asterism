@@ -7,13 +7,13 @@ use asterism::{
     graphics::draw::{self, Draw},
     physics::PointPhysics,
     resources::QueuedResources,
+    Event,
 };
 use macroquad::prelude::*;
 
 mod entities;
-pub mod events;
+mod events;
 mod types;
-use events::*;
 
 // reexports
 pub use asterism::collision::{AabbColData, AabbCollision, CollisionReaction};
@@ -21,6 +21,7 @@ pub use asterism::control::{Action, ControlEventType, ControlReaction, Values};
 pub use asterism::physics::{PhysicsEvent, PhysicsReaction, PointPhysData};
 pub use asterism::resources::{ResourceEventType, ResourceReaction, Transaction};
 pub use asterism::{LendingIterator, Logic};
+pub use events::*;
 pub use types::*;
 
 pub struct Logics {
@@ -386,63 +387,51 @@ fn collision(game: &mut Game) {
 
         // "how should we filter these events?"
         let events: Vec<Contact> = match event_data {
-            EngineCollisionEvent::All => events.copied().collect(),
             EngineCollisionEvent::Match(fst, snd) => match (fst, snd) {
-                (Some(CollisionEventMatch::ByID(id1)), Some(CollisionEventMatch::ByID(id2))) => {
-                    events
-                        .filter(|Contact { i, j, .. }| {
-                            game.state.get_col_idx(*id1) == *i && game.state.get_col_idx(*id2) == *j
-                        })
-                        .copied()
-                        .collect()
-                }
-                (
-                    Some(CollisionEventMatch::ByID(id1)),
-                    Some(CollisionEventMatch::ByType(type2)),
-                ) => events
+                (CollisionEventMatch::ByID(id1), CollisionEventMatch::ByID(id2)) => events
+                    .filter(|Contact { i, j, .. }| {
+                        game.state.get_col_idx(*id1) == *i && game.state.get_col_idx(*id2) == *j
+                    })
+                    .copied()
+                    .collect(),
+                (CollisionEventMatch::ByID(id1), CollisionEventMatch::ByType(type2)) => events
                     .filter(|Contact { i, j, .. }| {
                         game.state.get_col_idx(*id1) == *i
                             && game.state.get_id(*j).get_col_type() == *type2
                     })
                     .copied()
                     .collect(),
-                (Some(CollisionEventMatch::ByID(id1)), None) => events
+                (CollisionEventMatch::ByID(id1), CollisionEventMatch::All) => events
                     .filter(|Contact { i, .. }| game.state.get_col_idx(*id1) == *i)
                     .copied()
                     .collect(),
-                (
-                    Some(CollisionEventMatch::ByType(type1)),
-                    Some(CollisionEventMatch::ByID(id2)),
-                ) => events
+                (CollisionEventMatch::ByType(type1), CollisionEventMatch::ByID(id2)) => events
                     .filter(|Contact { i, j, .. }| {
                         game.state.get_id(*i).get_col_type() == *type1
                             && game.state.get_col_idx(*id2) == *j
                     })
                     .copied()
                     .collect(),
-                (
-                    Some(CollisionEventMatch::ByType(type1)),
-                    Some(CollisionEventMatch::ByType(type2)),
-                ) => events
+                (CollisionEventMatch::ByType(type1), CollisionEventMatch::ByType(type2)) => events
                     .filter(|Contact { i, j, .. }| {
                         game.state.get_id(*i).get_col_type() == *type1
                             && game.state.get_id(*j).get_col_type() == *type2
                     })
                     .copied()
                     .collect(),
-                (Some(CollisionEventMatch::ByType(type1)), None) => events
+                (CollisionEventMatch::ByType(type1), CollisionEventMatch::All) => events
                     .filter(|Contact { i, .. }| game.state.get_id(*i).get_col_type() == *type1)
                     .copied()
                     .collect(),
-                (None, Some(CollisionEventMatch::ByID(id2))) => events
+                (CollisionEventMatch::All, CollisionEventMatch::ByID(id2)) => events
                     .filter(|Contact { j, .. }| game.state.get_col_idx(*id2) == *j)
                     .copied()
                     .collect(),
-                (None, Some(CollisionEventMatch::ByType(type2))) => events
+                (CollisionEventMatch::All, CollisionEventMatch::ByType(type2)) => events
                     .filter(|Contact { j, .. }| game.state.get_id(*j).get_col_type() == *type2)
                     .copied()
                     .collect(),
-                (None, None) => events.copied().collect(),
+                (CollisionEventMatch::All, CollisionEventMatch::All) => events.copied().collect(),
             },
             EngineCollisionEvent::Filter(filter) => events
                 .filter(|Contact { i, j, .. }| filter(game.state.get_id(*i), game.state.get_id(*j)))
@@ -458,6 +447,11 @@ fn collision(game: &mut Game) {
                         EngineAction::BounceBall(*ball, Some(j))
                             .perform_action(&mut game.state, &mut game.logics)
                     }
+                    EngineAction::RemoveEntity(None) => {
+                        let j = game.state.get_id(event.j);
+                        EngineAction::RemoveEntity(Some(j))
+                            .perform_action(&mut game.state, &mut game.logics)
+                    }
                     _ => action.perform_action(&mut game.state, &mut game.logics),
                 }
             }
@@ -467,6 +461,43 @@ fn collision(game: &mut Game) {
 
 fn resources(game: &mut Game) {
     game.logics.resources.update();
+
+    for (event_data, actions) in game.events.resources.iter() {
+        let events = game.logics.resources.events();
+        let relevant = match event_data {
+            EngineRsrcEvent::ScoreIncreased(score) => {
+                let score = RsrcPool::Score(*score);
+                events.iter().any(|e| {
+                    e.pool == score
+                        && *e.get_type() == ResourceEventType::PoolUpdated
+                        && e.transaction == Transaction::Change(1)
+                })
+            }
+            EngineRsrcEvent::ScoreReset(score) => {
+                let score = RsrcPool::Score(*score);
+
+                events.iter().any(|e| {
+                    e.pool == score
+                        && *e.get_type() == ResourceEventType::PoolUpdated
+                        && e.transaction == Transaction::Set(0)
+                })
+            }
+            EngineRsrcEvent::ScoreEquals(score, v) => {
+                let score = RsrcPool::Score(*score);
+                let val = game.logics.resources.get_ident_data(score).val;
+                let events = game.logics.resources.events();
+
+                events.iter().any(|e| {
+                    e.pool == score && *e.get_type() == ResourceEventType::PoolUpdated && val == *v
+                })
+            }
+        };
+        if relevant {
+            for action in actions.iter() {
+                action.perform_action(&mut game.state, &mut game.logics);
+            }
+        }
+    }
 }
 
 pub fn draw(game: &mut Game) {

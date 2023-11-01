@@ -24,7 +24,7 @@ where
     /// Each transaction is a list of items involved in the transaction and the amount they're being changed.
     pub transactions: Vec<(ID, Transaction<Value>)>,
     /// A Vec of all transactions and if they were able to be completed or not. If not, also report an error (see [ResourceEvent] and [ResourceError]).
-    pub completed: Vec<ResourceEvent<ID>>,
+    pub completed: Vec<ResourceEvent<ID, Value>>,
 }
 
 impl<ID, Value> Logic for QueuedResources<ID, Value>
@@ -32,7 +32,7 @@ where
     ID: Copy + Ord + Debug,
     Value: Add<Output = Value> + AddAssign + Ord + Copy,
 {
-    type Event = ResourceEvent<ID>;
+    type Event = ResourceEvent<ID, Value>;
     type Reaction = ResourceReaction<ID, Value>;
 
     type Ident = ID;
@@ -78,19 +78,18 @@ where
     pub fn update(&mut self) {
         self.completed.clear();
 
-        for exchange in self.transactions.iter() {
-            let (item_type, change) = exchange;
-
-            if let Err(err) = self.is_possible(item_type, change) {
+        for (id, transaction) in self.transactions.iter() {
+            if let Err(err) = self.is_possible(id, transaction) {
                 self.completed.push(ResourceEvent {
-                    pool: *item_type,
+                    pool: *id,
+                    transaction: *transaction,
                     event_type: ResourceEventType::TransactionUnsuccessful(err),
                 });
                 continue;
             }
 
-            let PoolValues { val, min, max } = self.items.get_mut(item_type).unwrap();
-            match change {
+            let PoolValues { val, min, max } = self.items.get_mut(id).unwrap();
+            match transaction {
                 Transaction::Change(amt) => {
                     *val += *amt;
                 }
@@ -105,7 +104,8 @@ where
                 }
             }
             self.completed.push(ResourceEvent {
-                pool: *item_type,
+                pool: *id,
+                transaction: *transaction,
                 event_type: ResourceEventType::PoolUpdated,
             });
         }
@@ -143,7 +143,7 @@ where
 }
 
 /// A transaction holding the amount the value should change by.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum Transaction<Value>
 where
     Value: Add + AddAssign,
@@ -165,8 +165,12 @@ pub enum ResourceError {
 pub type ResourceReaction<ID, Value> = (ID, Transaction<Value>);
 
 #[derive(PartialEq, Eq, Clone, Copy)]
-pub struct ResourceEvent<ID> {
+pub struct ResourceEvent<ID, Value>
+where
+    Value: Eq + Add + AddAssign,
+{
     pub pool: ID,
+    pub transaction: Transaction<Value>,
     pub event_type: ResourceEventType,
 }
 
@@ -180,7 +184,7 @@ impl EventType for ResourceEventType {}
 
 impl<ID: Ord, Value: Add + AddAssign> Reaction for ResourceReaction<ID, Value> {}
 
-impl<ID: Ord> Event for ResourceEvent<ID> {
+impl<ID: Ord, Value: Add + AddAssign + Eq> Event for ResourceEvent<ID, Value> {
     type EventType = ResourceEventType;
     fn get_type(&self) -> &Self::EventType {
         &self.event_type
