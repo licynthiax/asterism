@@ -81,7 +81,7 @@ fn init(game: &mut Game) {
     // define paddle controls
     game.events.add_ctrl_events(
         EngineCtrlEvent::ServePressed(paddle, serve),
-        &[
+        vec![
             EngineAction::SetBallVel(ball, Vec2::splat(1.0)),
             EngineAction::SetKeyInvalid(paddle, serve),
         ],
@@ -98,11 +98,8 @@ fn init(game: &mut Game) {
 
     // bounce ball off everything
     game.events.add_col_events(
-        EngineCollisionEvent::Match(
-            CollisionEventMatch::ByID(ball.into()),
-            CollisionEventMatch::ByType(CollisionEnt::Wall),
-        ),
-        &[EngineAction::BounceBall(ball, None)],
+        EngineCollisionEvent::Match(EntityMatch::ByID(ball.into()), EntityMatch::All),
+        vec![EngineAction::BounceBall(ball, None)],
     );
 
     // remove box when bounced into
@@ -112,7 +109,7 @@ fn init(game: &mut Game) {
                 && id2.get_col_type() == CollisionEnt::Wall
                 && id2.get_wall().unwrap().idx() >= 4
         })),
-        &[
+        vec![
             EngineAction::RemoveEntity(None),
             EngineAction::ChangeScoreBy(score, 1),
         ],
@@ -121,10 +118,10 @@ fn init(game: &mut Game) {
     // reset score when ball hits bottom wall
     game.events.add_col_events(
         EngineCollisionEvent::Match(
-            CollisionEventMatch::ByID(ball.into()),
-            CollisionEventMatch::ByID(bottom_wall.into()),
+            EntityMatch::ByID(ball.into()),
+            EntityMatch::ByID(bottom_wall.into()),
         ),
-        &[EngineAction::ChangeScore(score, 0)],
+        vec![EngineAction::ChangeScore(score, 0)],
     );
 
     // reset score when score == 40
@@ -137,22 +134,24 @@ fn init(game: &mut Game) {
     // clear board
     game.events.add_rsrc_event(
         EngineRsrcEvent::ScoreReset(score),
-        // well ok this won't work bc there's no filtering on "none"
-        EngineAction::RemoveEntity(None),
+        EngineAction::RemoveEntity(Some(EntityMatch::Filter(Box::new(|ent: EntID| {
+            ent.get_type() == EntType::Wall && ent.get_wall().unwrap().idx() >= 4
+        })))),
     );
 
     // add a million blocks
-    for wall in add_blocks() {
-        game.events.add_rsrc_event(
-            EngineRsrcEvent::ScoreReset(score),
-            EngineAction::AddEntity(Ent::Wall(wall)),
-        );
-    }
+    game.events.add_rsrc_events(
+        EngineRsrcEvent::ScoreReset(score),
+        add_blocks()
+            .iter()
+            .map(|wall| EngineAction::AddEntity(Ent::Wall(*wall)))
+            .collect(),
+    );
 
     // reset ball
     game.events.add_rsrc_events(
         EngineRsrcEvent::ScoreReset(score),
-        &[
+        vec![
             EngineAction::SetBallPos(
                 ball,
                 Vec2::new(

@@ -126,10 +126,10 @@ fn init(game: &mut Game) {
     // increase score on collision with side wall
     game.events.add_col_events(
         EngineCollisionEvent::Match(
-            CollisionEventMatch::ByID(ball.into()),
-            CollisionEventMatch::ByID(right_wall.into()),
+            EntityMatch::ByID(ball.into()),
+            EntityMatch::ByID(right_wall.into()),
         ),
-        &[
+        vec![
             EngineAction::ChangeScore(score1, 1),
             EngineAction::SetKeyValid(paddle1, action_w),
             EngineAction::SetBallPos(ball, center),
@@ -139,10 +139,10 @@ fn init(game: &mut Game) {
 
     game.events.add_col_events(
         EngineCollisionEvent::Match(
-            CollisionEventMatch::ByID(ball.into()),
-            CollisionEventMatch::ByID(left_wall.into()),
+            EntityMatch::ByID(ball.into()),
+            EntityMatch::ByID(left_wall.into()),
         ),
-        &[
+        vec![
             EngineAction::ChangeScore(score2, 1),
             EngineAction::SetKeyValid(paddle2, action_i),
             EngineAction::SetBallPos(ball, center),
@@ -152,24 +152,24 @@ fn init(game: &mut Game) {
 
     game.events.add_col_events(
         EngineCollisionEvent::Match(
-            CollisionEventMatch::ByID(ball.into()),
-            CollisionEventMatch::ByID(paddle1.into()),
+            EntityMatch::ByID(ball.into()),
+            EntityMatch::ByID(paddle1.into()),
         ),
-        &[EngineAction::BounceBall(ball, Some(EntID::Paddle(paddle1)))],
+        vec![EngineAction::BounceBall(ball, Some(EntID::Paddle(paddle1)))],
     );
     game.events.add_col_events(
         EngineCollisionEvent::Match(
-            CollisionEventMatch::ByID(ball.into()),
-            CollisionEventMatch::ByID(paddle2.into()),
+            EntityMatch::ByID(ball.into()),
+            EntityMatch::ByID(paddle2.into()),
         ),
-        &[EngineAction::BounceBall(ball, Some(EntID::Paddle(paddle2)))],
+        vec![EngineAction::BounceBall(ball, Some(EntID::Paddle(paddle2)))],
     );
 
     game.events.add_col_events(
         EngineCollisionEvent::Match(
-            CollisionEventMatch::ByID(ball.into()),
-            CollisionEventMatch::ByType(CollisionEnt::Wall),
+            EntityMatch::ByID(ball.into()),
+            EntityMatch::ByType(CollisionEnt::Wall.into()),
         ),
-        &[EngineAction::BounceBall(ball, None)],
+        vec![EngineAction::BounceBall(ball, None)],
     );
 }

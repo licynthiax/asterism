@@ -10,9 +10,11 @@ use crate::Game;
 
 macro_rules! add_ent {
     (@attach $game:expr, $id:ident $gamefield:ident $ent_name:ident $ent_ty:ty; $id_ty:ty [collision: $col_data:expr]) => {
-        let col_idx = $game
-            .state
-            .get_col_idx(<$id_ty>::new($game.state.$gamefield.len()).into());
+        let col_idx = match $col_data.id {
+            CollisionEnt::Paddle => $game.state.$gamefield.len(),
+            CollisionEnt::Wall => $game.state.$gamefield.len() + $game.state.paddles.len(),
+            CollisionEnt::Ball => $game.state.$gamefield.len() + $game.state.paddles.len() + $game.state.walls.len()
+        };
 
         let collision = &mut $game.logics.collision;
         let hs = $ent_name.size / 2.0;
@@ -45,9 +47,11 @@ macro_rules! add_ent {
     // 'col_ent' is the collision entity because in this engine, everything that can be
     // collided with is also drawn
     (@attach $game:expr, $id:ident $gamefield:ident $ent_name:ident $ent_ty:ty; $id_ty:ty [draw: $col_ent:expr, $color:expr]) => {
-        let col_idx = $game
-            .state
-            .get_col_idx(<$id_ty>::new($game.state.$gamefield.len()).into());
+        let col_idx = match $col_ent {
+            CollisionEnt::Paddle => $game.state.$gamefield.len(),
+            CollisionEnt::Wall => $game.state.$gamefield.len() + $game.state.paddles.len(),
+            CollisionEnt::Ball => $game.state.$gamefield.len() + $game.state.paddles.len() + $game.state.walls.len()
+        };
 
         let rect = draw::Drawable::Rectangle(
             draw::Rect::new(

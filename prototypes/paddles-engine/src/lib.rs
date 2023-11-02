@@ -62,6 +62,15 @@ impl EntID {
         }
     }
 
+    pub fn get_type(&self) -> EntType {
+        match self {
+            Self::Ball(_) => EntType::Ball,
+            Self::Paddle(_) => EntType::Paddle,
+            Self::Wall(_) => EntType::Wall,
+            Self::Score(_) => EntType::Score,
+        }
+    }
+
     fn get_idx(&self) -> usize {
         match self {
             EntID::Wall(id) => id.idx(),
@@ -87,6 +96,24 @@ impl EntID {
         match self {
             Self::Paddle(id) => Some(*id),
             _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum EntType {
+    Wall,
+    Paddle,
+    Ball,
+    Score,
+}
+
+impl From<CollisionEnt> for EntType {
+    fn from(col: CollisionEnt) -> Self {
+        match col {
+            CollisionEnt::Paddle => Self::Paddle,
+            CollisionEnt::Wall => Self::Wall,
+            CollisionEnt::Ball => Self::Ball,
         }
     }
 }
@@ -127,11 +154,27 @@ pub struct State {
 
 impl State {
     pub fn get_col_idx(&self, id: EntID) -> usize {
-        let i = id.get_idx();
         match id.get_col_type() {
-            CollisionEnt::Paddle => i,
-            CollisionEnt::Wall => i + self.paddles.len(),
-            CollisionEnt::Ball => i + self.paddles.len() + self.walls.len(),
+            CollisionEnt::Paddle => self
+                .paddles
+                .iter()
+                .position(|&p| p == id.get_paddle().unwrap())
+                .unwrap(),
+            CollisionEnt::Wall => {
+                self.walls
+                    .iter()
+                    .position(|&w| w == id.get_wall().unwrap())
+                    .unwrap()
+                    + self.paddles.len()
+            }
+            CollisionEnt::Ball => {
+                self.balls
+                    .iter()
+                    .position(|&b| b == id.get_ball().unwrap())
+                    .unwrap()
+                    + self.paddles.len()
+                    + self.walls.len()
+            }
         }
     }
 
@@ -195,64 +238,6 @@ impl Game {
     }
 }
 
-// macro to make matching entities to statements take up less space
-macro_rules! match_ent {
-    (
-        $match_to:expr,
-        $wall:ident: $wall_block:block,
-        $ball:ident: $ball_block:block,
-        $paddle:ident: $paddle_block:block,
-        $score:ident: $score_block:block
-    ) => {
-        match $match_to {
-            Ent::Wall($wall) => $wall_block,
-            Ent::Ball($ball) => $ball_block,
-            Ent::Paddle($paddle) => $paddle_block,
-            Ent::Score($score) => $score_block,
-        }
-    };
-    (
-        $match_to:expr,
-        only $ent:ident: $ent_block:block
-    ) => {
-        match $match_to {
-            EntID::Wall($ent) => $ent_block,
-            EntID::Ball($ent) => $ent_block,
-            EntID::Paddle($ent) => $ent_block,
-            EntID::Score($ent) => $ent_block,
-        }
-    };
-}
-
-// macro to make matching entity ids to statements less verbose
-macro_rules! match_ent_id {
-    (
-        $match_to:expr,
-        $wall:ident: $wall_block:block,
-        $ball:ident: $ball_block:block,
-        $paddle:ident: $paddle_block:block,
-        $score:ident: $score_block:block
-    ) => {
-        match $match_to {
-            EntID::Wall($wall) => $wall_block,
-            EntID::Ball($ball) => $ball_block,
-            EntID::Paddle($paddle) => $paddle_block,
-            EntID::Score($score) => $score_block,
-        }
-    };
-    (
-        $match_to:expr,
-        only $ent:ident: $ent_block:block
-    ) => {
-        match $match_to {
-            EntID::Wall($ent) => $ent_block,
-            EntID::Ball($ent) => $ent_block,
-            EntID::Paddle($ent) => $ent_block,
-            EntID::Score($ent) => $ent_block,
-        }
-    };
-}
-
 pub async fn run(mut game: Game) {
     use std::collections::VecDeque;
     let mut fps = VecDeque::with_capacity(1000);
@@ -272,31 +257,37 @@ pub async fn run(mut game: Game) {
 
         // remove and add entities from previous frame
         game.state.remove_queue.sort_by(|a, b| {
-            let a = match_ent_id!(a, only ent: { ent.idx() } );
-            let b = match_ent_id!(b, only ent: { ent.idx() });
-            a.cmp(&b)
+            let a = a.get_idx();
+            let b = b.get_idx();
+            b.cmp(&a)
         });
         let remove_queue = std::mem::take(&mut game.state.remove_queue);
         for ent in remove_queue {
-            match_ent_id!(
-                ent,
-                wall: { game.remove_wall(wall); },
-                ball: { game.remove_ball(ball); },
-                paddle: { game.remove_paddle(paddle); },
-                score: { game.remove_score(score); }
-            );
+            match ent {
+                EntID::Wall(wall) => game.remove_wall(wall),
+                EntID::Ball(ball) => game.remove_ball(ball),
+                EntID::Paddle(paddle) => game.remove_paddle(paddle),
+                EntID::Score(score) => game.remove_score(score),
+            };
         }
 
         // add
         let add_queue = std::mem::take(&mut game.state.add_queue);
         for ent in add_queue {
-            match_ent!(
-                ent,
-                wall: { game.add_wall(wall); },
-                ball: { game.add_ball(ball); },
-                paddle: { game.add_paddle(paddle); },
-                score: { game.add_score(score); }
-            );
+            match ent {
+                Ent::Wall(wall) => {
+                    game.add_wall(wall);
+                }
+                Ent::Ball(ball) => {
+                    game.add_ball(ball);
+                }
+                Ent::Paddle(paddle) => {
+                    game.add_paddle(paddle);
+                }
+                Ent::Score(score) => {
+                    game.add_score(score);
+                }
+            }
         }
 
         control(&mut game);
@@ -388,50 +379,97 @@ fn collision(game: &mut Game) {
         // "how should we filter these events?"
         let events: Vec<Contact> = match event_data {
             EngineCollisionEvent::Match(fst, snd) => match (fst, snd) {
-                (CollisionEventMatch::ByID(id1), CollisionEventMatch::ByID(id2)) => events
+                (EntityMatch::ByID(id1), EntityMatch::ByID(id2)) => events
                     .filter(|Contact { i, j, .. }| {
                         game.state.get_col_idx(*id1) == *i && game.state.get_col_idx(*id2) == *j
                     })
                     .copied()
                     .collect(),
-                (CollisionEventMatch::ByID(id1), CollisionEventMatch::ByType(type2)) => events
+                (EntityMatch::ByID(id1), EntityMatch::ByType(type2)) => events
                     .filter(|Contact { i, j, .. }| {
-                        game.state.get_col_idx(*id1) == *i
-                            && game.state.get_id(*j).get_col_type() == *type2
+                        let ty2: EntType = game.state.get_id(*j).get_col_type().into();
+                        game.state.get_col_idx(*id1) == *i && ty2 == *type2
                     })
                     .copied()
                     .collect(),
-                (CollisionEventMatch::ByID(id1), CollisionEventMatch::All) => events
+                (EntityMatch::ByID(id1), EntityMatch::All) => events
                     .filter(|Contact { i, .. }| game.state.get_col_idx(*id1) == *i)
                     .copied()
                     .collect(),
-                (CollisionEventMatch::ByType(type1), CollisionEventMatch::ByID(id2)) => events
+                (EntityMatch::ByID(id1), EntityMatch::Filter(filter2)) => events
+                    .filter(|Contact { i, .. }| game.state.get_col_idx(*id1) == *i)
+                    .filter(|Contact { j, .. }| filter2(game.state.get_id(*j)))
+                    .copied()
+                    .collect(),
+                (EntityMatch::ByType(type1), EntityMatch::ByID(id2)) => events
                     .filter(|Contact { i, j, .. }| {
-                        game.state.get_id(*i).get_col_type() == *type1
-                            && game.state.get_col_idx(*id2) == *j
+                        let ty1: EntType = game.state.get_id(*i).get_col_type().into();
+                        ty1 == *type1 && game.state.get_col_idx(*id2) == *j
                     })
                     .copied()
                     .collect(),
-                (CollisionEventMatch::ByType(type1), CollisionEventMatch::ByType(type2)) => events
+                (EntityMatch::ByType(type1), EntityMatch::ByType(type2)) => events
                     .filter(|Contact { i, j, .. }| {
-                        game.state.get_id(*i).get_col_type() == *type1
-                            && game.state.get_id(*j).get_col_type() == *type2
+                        let ty1: EntType = game.state.get_id(*i).get_col_type().into();
+                        let ty2: EntType = game.state.get_id(*j).get_col_type().into();
+                        ty1 == *type1 && ty2 == *type2
                     })
                     .copied()
                     .collect(),
-                (CollisionEventMatch::ByType(type1), CollisionEventMatch::All) => events
-                    .filter(|Contact { i, .. }| game.state.get_id(*i).get_col_type() == *type1)
+                (EntityMatch::ByType(type1), EntityMatch::All) => events
+                    .filter(|Contact { i, .. }| {
+                        let ty1: EntType = game.state.get_id(*i).get_col_type().into();
+                        ty1 == *type1
+                    })
                     .copied()
                     .collect(),
-                (CollisionEventMatch::All, CollisionEventMatch::ByID(id2)) => events
+                (EntityMatch::ByType(type1), EntityMatch::Filter(filter2)) => events
+                    .filter(|Contact { i, .. }| {
+                        let ty1: EntType = game.state.get_id(*i).get_col_type().into();
+                        ty1 == *type1
+                    })
+                    .filter(|Contact { j, .. }| filter2(game.state.get_id(*j)))
+                    .copied()
+                    .collect(),
+                (EntityMatch::All, EntityMatch::ByID(id2)) => events
                     .filter(|Contact { j, .. }| game.state.get_col_idx(*id2) == *j)
                     .copied()
                     .collect(),
-                (CollisionEventMatch::All, CollisionEventMatch::ByType(type2)) => events
-                    .filter(|Contact { j, .. }| game.state.get_id(*j).get_col_type() == *type2)
+                (EntityMatch::All, EntityMatch::ByType(type2)) => events
+                    .filter(|Contact { j, .. }| {
+                        let ty2: EntType = game.state.get_id(*j).get_col_type().into();
+                        ty2 == *type2
+                    })
                     .copied()
                     .collect(),
-                (CollisionEventMatch::All, CollisionEventMatch::All) => events.copied().collect(),
+                (EntityMatch::All, EntityMatch::All) => events.copied().collect(),
+                (EntityMatch::All, EntityMatch::Filter(filter2)) => events
+                    .filter(|Contact { j, .. }| filter2(game.state.get_id(*j)))
+                    .copied()
+                    .collect(),
+                (EntityMatch::Filter(filter1), EntityMatch::ByID(id2)) => events
+                    .filter(|Contact { i, .. }| filter1(game.state.get_id(*i)))
+                    .filter(|Contact { j, .. }| game.state.get_col_idx(*id2) == *j)
+                    .copied()
+                    .collect(),
+                (EntityMatch::Filter(filter1), EntityMatch::ByType(type2)) => events
+                    .filter(|Contact { i, .. }| filter1(game.state.get_id(*i)))
+                    .filter(|Contact { j, .. }| {
+                        let ty2: EntType = game.state.get_id(*j).get_col_type().into();
+                        ty2 == *type2
+                    })
+                    .copied()
+                    .collect(),
+                (EntityMatch::Filter(filter1), EntityMatch::All) => events
+                    .filter(|Contact { i, .. }| filter1(game.state.get_id(*i)))
+                    .copied()
+                    .collect(),
+                (EntityMatch::Filter(filter1), EntityMatch::Filter(filter2)) => events
+                    .filter(|Contact { i, j, .. }| {
+                        filter1(game.state.get_id(*i)) && filter2(game.state.get_id(*j))
+                    })
+                    .copied()
+                    .collect(),
             },
             EngineCollisionEvent::Filter(filter) => events
                 .filter(|Contact { i, j, .. }| filter(game.state.get_id(*i), game.state.get_id(*j)))
@@ -445,12 +483,12 @@ fn collision(game: &mut Game) {
                     EngineAction::BounceBall(ball, None) => {
                         let j = game.state.get_id(event.j);
                         EngineAction::BounceBall(*ball, Some(j))
-                            .perform_action(&mut game.state, &mut game.logics)
+                            .perform_action(&mut game.state, &mut game.logics);
                     }
                     EngineAction::RemoveEntity(None) => {
                         let j = game.state.get_id(event.j);
-                        EngineAction::RemoveEntity(Some(j))
-                            .perform_action(&mut game.state, &mut game.logics)
+                        EngineAction::RemoveEntity(Some(EntityMatch::ByID(j)))
+                            .perform_action(&mut game.state, &mut game.logics);
                     }
                     _ => action.perform_action(&mut game.state, &mut game.logics),
                 }
