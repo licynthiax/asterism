@@ -206,19 +206,6 @@ impl State {
         EntID::Score(score)
     }
 
-    pub fn paddles(&self) -> &[PaddleID] {
-        &self.paddles
-    }
-    pub fn walls(&self) -> &[WallID] {
-        &self.walls
-    }
-    pub fn balls(&self) -> &[BallID] {
-        &self.balls
-    }
-    pub fn scores(&self) -> &[ScoreID] {
-        &self.scores
-    }
-
     pub fn queue_remove(&mut self, ent: EntID) {
         if !self.remove_queue.iter().any(|id| ent == *id) {
             self.remove_queue.push(ent);
@@ -525,7 +512,6 @@ fn resources(game: &mut Game) {
             }
             EngineRsrcEvent::ScoreReset(score) => {
                 let score = RsrcPool::Score(*score);
-
                 events.iter().any(|e| {
                     e.pool == score
                         && *e.get_type() == ResourceEventType::PoolUpdated

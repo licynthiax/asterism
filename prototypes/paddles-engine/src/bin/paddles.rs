@@ -130,7 +130,7 @@ fn init(game: &mut Game) {
             EntityMatch::ByID(right_wall.into()),
         ),
         vec![
-            EngineAction::ChangeScore(score1, 1),
+            EngineAction::ChangeScoreBy(score1, 1),
             EngineAction::SetKeyValid(paddle1, action_w),
             EngineAction::SetBallPos(ball, center),
             EngineAction::SetBallVel(ball, Vec2::ZERO),
@@ -143,7 +143,7 @@ fn init(game: &mut Game) {
             EntityMatch::ByID(left_wall.into()),
         ),
         vec![
-            EngineAction::ChangeScore(score2, 1),
+            EngineAction::ChangeScoreBy(score2, 1),
             EngineAction::SetKeyValid(paddle2, action_i),
             EngineAction::SetBallPos(ball, center),
             EngineAction::SetBallVel(ball, Vec2::ZERO),
