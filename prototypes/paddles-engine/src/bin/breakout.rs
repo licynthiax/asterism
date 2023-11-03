@@ -76,7 +76,7 @@ fn init(game: &mut Game) {
     let serve = paddle.add_control_map(KeyCode::Space, true);
     let paddle = game.add_paddle(paddle);
 
-    let score = game.add_score(Score::new(0));
+    let score = game.add_score(Score::new(0, Vec2::new(0.0, (HEIGHT - 22) as f32)));
 
     // define paddle controls
     game.events.add_ctrl_events(

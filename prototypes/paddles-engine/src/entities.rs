@@ -6,7 +6,7 @@ use asterism::{collision::CollisionReaction, physics::PhysicsReaction, resources
 use macroquad::math::Vec2;
 
 use crate::types::*;
-use crate::Game;
+use crate::{Game, LogicsList};
 
 macro_rules! add_ent {
     (@attach $game:expr, $id:ident $gamefield:ident $ent_name:ident $ent_ty:ty; $id_ty:ty [collision: $col_data:expr]) => {
@@ -39,6 +39,20 @@ macro_rules! add_ent {
             .insert(RsrcPool::Score($id), PoolValues{ val: $ent_name.value, min: <$ent_ty>::MIN, max: <$ent_ty>::MAX});
     };
 
+    (@attach $game:expr, $id:ident $gamefield:ident $ent_name:ident $ent_ty:ty; $id_ty:ty [resource draw: $pos:expr]) => {
+        let draw_idx = $game.state.balls.len() + $game.state.paddles.len() + $game.state.walls.len() + $game.state.scores.len();
+
+        $game.draw.add_drawable(
+            draw_idx,
+            draw::DrawType::FixedPoint($pos),
+            draw::Drawable::Text(
+                "".to_string(),
+                22,
+                macroquad::color::WHITE
+            )
+        );
+    };
+
     (@attach $game:expr, $id:ident $gamefield:ident $ent_name:ident $ent_ty:ty; $id_ty:ty [physics]) => {
         $game.logics.physics
             .add_physics_entity($ent_name.pos, $ent_name.vel, Vec2::ZERO);
@@ -46,23 +60,15 @@ macro_rules! add_ent {
 
     // 'col_ent' is the collision entity because in this engine, everything that can be
     // collided with is also drawn
-    (@attach $game:expr, $id:ident $gamefield:ident $ent_name:ident $ent_ty:ty; $id_ty:ty [draw: $col_ent:expr, $color:expr]) => {
+    (@attach $game:expr, $id:ident $gamefield:ident $ent_name:ident $ent_ty:ty; $id_ty:ty [collision draw: $col_ent:expr, $color:expr]) => {
         let col_idx = match $col_ent {
             CollisionEnt::Paddle => $game.state.$gamefield.len(),
             CollisionEnt::Wall => $game.state.$gamefield.len() + $game.state.paddles.len(),
             CollisionEnt::Ball => $game.state.$gamefield.len() + $game.state.paddles.len() + $game.state.walls.len()
         };
 
-        let rect = draw::Drawable::Rectangle(
-            draw::Rect::new(
-                $ent_name.pos.x,
-                $ent_name.pos.y,
-                $ent_name.size.x,
-                $ent_name.size.y,
-            ),
-            $color,
-        );
-        $game.draw.drawables.insert(col_idx, rect);
+        $game.draw.add_drawable(col_idx, draw::DrawType::FromLogic(LogicsList::Collision),
+            draw::Drawable::Rectangle($ent_name.size, $color));
     };
 
     ($gamefield:ident: ($ent_name:ident: $ent_ty:ty) -> $id_ty:ty {$([$($logic:tt)*]),*}, $game:expr, $id:ident) => {
@@ -88,7 +94,7 @@ impl Game {
             paddles: (paddle: Paddle) -> PaddleID {
                 [collision: col_data],
                 [control],
-                [draw: CollisionEnt::Paddle, draw::WHITE]
+                [collision draw: CollisionEnt::Paddle, draw::WHITE]
             }, self, id);
         id
     }
@@ -105,7 +111,7 @@ impl Game {
             balls: (ball: Ball) -> BallID {
                 [collision: col_data],
                 [physics],
-                [draw: CollisionEnt::Ball, draw::YELLOW]
+                [collision draw: CollisionEnt::Ball, draw::YELLOW]
             }, self, id);
         id
     }
@@ -122,7 +128,7 @@ impl Game {
         add_ent!(
             walls: (wall: Wall) -> WallID {
                 [collision: col_data],
-                [draw: CollisionEnt::Wall, draw::SKYBLUE]
+                [collision draw: CollisionEnt::Wall, draw::SKYBLUE]
             }, self, id);
 
         id
@@ -133,7 +139,8 @@ impl Game {
         self.state.score_id_max += 1;
         add_ent!(
             scores: (score: Score) -> ScoreID {
-                [resource]
+                [resource],
+                [resource draw: score.position]
             }, self, id);
         id
     }
@@ -152,7 +159,7 @@ impl Game {
             .collision
             .handle_predicate(&CollisionReaction::RemoveBody(col_idx));
 
-        self.draw.drawables.remove(col_idx);
+        self.draw.remove_drawable(col_idx);
         self.state.paddles.remove(ent_idx);
     }
 
@@ -169,7 +176,7 @@ impl Game {
             .collision
             .handle_predicate(&CollisionReaction::RemoveBody(col_idx));
 
-        self.draw.drawables.remove(col_idx);
+        self.draw.remove_drawable(col_idx);
         self.state.walls.remove(ent_idx);
     }
 
@@ -189,7 +196,7 @@ impl Game {
             .collision
             .handle_predicate(&CollisionReaction::RemoveBody(col_idx));
 
-        self.draw.drawables.remove(col_idx);
+        self.draw.remove_drawable(col_idx);
         self.state.balls.remove(ent_idx);
     }
 

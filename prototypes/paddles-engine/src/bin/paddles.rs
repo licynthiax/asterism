@@ -83,8 +83,8 @@ fn init(game: &mut Game) {
     let action_i = p2.add_control_map(KeyCode::I, false);
     let paddle2 = game.add_paddle(p2);
 
-    let score1 = game.add_score(Score::new(0));
-    let score2 = game.add_score(Score::new(0));
+    let score1 = game.add_score(Score::new(0, Vec2::ZERO));
+    let score2 = game.add_score(Score::new(0, Vec2::new((WIDTH - PADDLE_OFF_X) as f32, 0.0)));
 
     // paddle movement
     game.events.add_ctrl_event(

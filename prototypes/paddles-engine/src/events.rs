@@ -60,15 +60,9 @@ impl EngineAction {
             Self::BounceBall(_, None) => {} // no entity to be bounced off of
             Self::BounceBall(ball, Some(ent)) => {
                 let ball_idx = state.get_col_idx((*ball).into());
-                let ent_idx = match *ent {
-                    crate::EntID::Wall(wall) => state.get_col_idx(wall.into()),
-                    crate::EntID::Ball(ball) => state.get_col_idx(ball.into()),
-                    crate::EntID::Paddle(paddle) => state.get_col_idx(paddle.into()),
-                    crate::EntID::Score(_) => panic!("cannot bounce off a score!"),
-                };
+                let ent_idx = state.get_col_idx(*ent);
 
                 let sides_touched = logics.collision.sides_touched(ball_idx, ent_idx);
-
                 let vals = logics.physics.get_ident_data(ball.idx());
                 if sides_touched.y != 0.0 {
                     vals.vel.y *= -1.0;
@@ -96,30 +90,12 @@ impl EngineAction {
                     crate::RsrcPool::Score(*score),
                     asterism::resources::Transaction::Set(*val),
                 ));
-                println!(
-                    "score for p{} is now {}",
-                    score.idx() + 1,
-                    logics
-                        .resources
-                        .get_ident_data(crate::RsrcPool::Score(*score))
-                        .val
-                        + val
-                );
             }
             Self::ChangeScoreBy(score, val) => {
                 logics.resources.handle_predicate(&(
                     crate::RsrcPool::Score(*score),
                     asterism::resources::Transaction::Change(*val),
                 ));
-                println!(
-                    "score for p{} is now {}",
-                    score.idx() + 1,
-                    logics
-                        .resources
-                        .get_ident_data(crate::RsrcPool::Score(*score))
-                        .val
-                        + val
-                );
             }
             Self::SetPaddlePos(paddle, pos) => {
                 let col_idx = state.get_col_idx((*paddle).into());

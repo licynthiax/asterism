@@ -42,6 +42,13 @@ impl Logics {
     }
 }
 
+pub enum LogicsList {
+    Collision,
+    Physics,
+    Resources,
+    Control,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum EntID {
     Wall(WallID),
@@ -190,8 +197,13 @@ impl State {
             return EntID::Wall(wall);
         }
         idx -= self.walls.len() as isize;
-        let ball = self.balls[idx as usize];
-        EntID::Ball(ball)
+        if idx - (self.balls.len() as isize) < 0 {
+            let ball = self.balls[idx as usize];
+            return EntID::Ball(ball);
+        }
+        idx -= self.balls.len() as isize;
+        let score = self.scores[idx as usize];
+        EntID::Score(score)
     }
 
     pub fn paddles(&self) -> &[PaddleID] {
@@ -221,7 +233,7 @@ pub struct Game {
     pub state: State,
     pub logics: Logics,
     pub events: Events,
-    pub draw: Draw,
+    pub draw: Draw<LogicsList>,
 }
 
 impl Game {
@@ -539,12 +551,40 @@ fn resources(game: &mut Game) {
 }
 
 pub fn draw(game: &mut Game) {
-    let mut col_data = game.logics.collision.data_iter().enumerate();
-    while let Some((i, (_, col))) = col_data.next() {
-        let center = col.center;
-        let hs = col.half_size;
-        let rect = draw::Rect::new(center.x - hs.x, center.y - hs.y, hs.x * 2.0, hs.y * 2.0);
-        game.draw.update_rect(i, rect);
+    use draw::DrawType;
+
+    let mut positions = Vec::new();
+    for (i, draw_type) in game.draw.positions.iter().enumerate() {
+        match draw_type {
+            DrawType::FromLogic(logic) => {
+                let mut position = Vec2::ZERO;
+
+                // this engine only connects drawing to collision logics
+                if let LogicsList::Collision = logic {
+                    match game.state.get_id(i) {
+                        EntID::Score(_) => {}
+                        _ => {
+                            let col = game.logics.collision.get_ident_data(i);
+                            position = *col.center - *col.half_size;
+                        }
+                    }
+                }
+                positions.push(position);
+            }
+            // this engine only connects drawing to collision logics
+            DrawType::Offset(_, _) => {}
+            DrawType::FixedPoint(position) => {
+                if let EntID::Score(s) = game.state.get_id(i) {
+                    let score = game.logics.resources.get_ident_data(RsrcPool::Score(s));
+                    let drawable = &mut game.draw.drawables[i];
+                    if let draw::Drawable::Text(text, _, _) = drawable {
+                        *text = format!("{}", score.val);
+                    }
+
+                    positions.push(*position);
+                }
+            }
+        }
     }
-    game.draw.draw();
+    game.draw.draw(positions);
 }

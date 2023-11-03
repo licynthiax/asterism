@@ -2,107 +2,117 @@
 pub use macroquad::{
     color::{colors::*, Color},
     math::{Rect, Vec2},
+    text::TextParams,
     texture::DrawTextureParams,
 };
 
-use macroquad::{shapes::*, texture};
+use macroquad::{shapes::*, text, texture};
 
 use futures::executor::block_on;
 use std::collections::BTreeMap;
 
 /// provided struct for organizing drawables
-pub struct Draw {
+pub struct Draw<LogicsList> {
+    pub positions: Vec<DrawType<LogicsList>>,
     pub drawables: Vec<Drawable>,
-    pub textures: Textures,
+    textures: Textures,
     pub background_color: Color,
 }
 
-impl Draw {
+impl<LogicsList> Draw<LogicsList> {
     pub fn new() -> Self {
         Self {
+            positions: Vec::new(),
             drawables: Vec::new(),
             textures: Textures::new(),
             background_color: BLANK,
         }
     }
 
+    pub fn add_drawable(&mut self, at: usize, pos: DrawType<LogicsList>, drawable: Drawable) {
+        self.positions.insert(at, pos);
+        self.drawables.insert(at, drawable);
+    }
+    pub fn remove_drawable(&mut self, at: usize) {
+        self.positions.remove(at);
+        self.drawables.remove(at);
+    }
+
     pub fn clear_drawables(&mut self) {
+        self.positions.clear();
         self.drawables.clear();
     }
 
-    pub fn update_rect(&mut self, i: usize, rect: Rect) {
-        match &mut self.drawables[i] {
-            Drawable::Rectangle(r, _) => *r = rect,
-            Drawable::Sprite(r, _) => *r = rect,
-            Drawable::Animation(r, _) => *r = rect,
-        }
-    }
-
-    pub fn draw(&mut self) {
+    pub fn draw(&mut self, positions: Vec<Vec2>) {
         macroquad::window::clear_background(self.background_color);
-        for drawable in self.drawables.iter_mut() {
-            drawable.draw(&self.textures);
+        for (drawable, pos) in self.drawables.iter_mut().zip(positions.iter()) {
+            drawable.draw(*pos, &self.textures);
         }
     }
 }
 
-pub struct DrawRects {
-    pub drawables: Vec<Drawable>,
+pub struct DrawRects<LogicsList> {
+    positions: Vec<DrawType<LogicsList>>,
+    drawables: Vec<Drawable>,
 }
 
-impl DrawRects {
+impl<LogicsList> DrawRects<LogicsList> {
     pub fn new() -> Self {
         Self {
+            positions: Vec::new(),
             drawables: Vec::new(),
         }
     }
 
     pub fn clear(&mut self) {
+        self.positions.clear();
         self.drawables.clear();
     }
 
-    pub fn draw(&self) {
-        for drawable in self.drawables.iter() {
-            drawable.draw_rect();
+    pub fn get_draw_types(&self) -> &[DrawType<LogicsList>] {
+        &self.positions
+    }
+
+    pub fn draw(&self, positions: Vec<Vec2>) {
+        for (drawable, pos) in self.drawables.iter().zip(positions.iter()) {
+            drawable.draw_rect(*pos);
         }
     }
 }
 
 #[derive(Debug)]
 pub enum Drawable {
-    /// position + size, then color
-    Rectangle(Rect, Color),
-    /// position + size, then texture
-    Sprite(Rect, TexID),
-    /// position + size, then animation information
-    Animation(Rect, Box<Animation>),
+    Rectangle(Vec2, Color),
+    Sprite(Vec2, TexID),
+    Animation(Vec2, Box<Animation>),
+    Text(String, u16, Color),
 }
 
 impl Drawable {
     /// draw if you're not using textures
-    pub fn draw_rect(&self) {
-        if let Drawable::Rectangle(rect, color) = self {
-            draw_rectangle(rect.x, rect.y, rect.w, rect.h, *color);
+    pub fn draw_rect(&self, pos: Vec2) {
+        if let Drawable::Rectangle(size, color) = self {
+            draw_rectangle(pos.x, pos.y, size.x, size.y, *color);
         }
     }
 
     // making self mutable is probably not sensible? honestly unsure
-    pub fn draw(&mut self, textures: &Textures) {
+    pub fn draw(&mut self, pos: Vec2, textures: &Textures) {
         match self {
-            Drawable::Rectangle(rect, color) => {
-                draw_rectangle(rect.x, rect.y, rect.w, rect.h, *color)
+            Drawable::Rectangle(size, color) => {
+                draw_rectangle(pos.x, pos.y, size.x, size.y, *color)
             }
-            Drawable::Sprite(rect, sprite) => {
+            Drawable::Sprite(size, sprite) => {
                 let params = DrawTextureParams {
-                    dest_size: Some(Vec2::new(rect.w, rect.h)),
+                    dest_size: Some(*size),
                     ..Default::default()
                 };
                 let tex = textures.get_texture(*sprite);
-                texture::draw_texture_ex(tex, rect.x, rect.y, BLACK, params);
+                texture::draw_texture_ex(tex, pos.x, pos.y, BLACK, params);
             }
-            Drawable::Animation(rect, anim) => {
+            Drawable::Animation(size, anim) => {
                 let params = DrawTextureParams {
-                    dest_size: Some(Vec2::new(rect.w, rect.h)),
+                    dest_size: Some(*size),
                     ..Default::default()
                 };
                 let frame = anim.current_frame;
@@ -117,7 +127,17 @@ impl Drawable {
                     anim.current_frame.1 += 1;
                 }
 
-                texture::draw_texture_ex(tex, rect.x, rect.y, BLACK, params);
+                texture::draw_texture_ex(tex, pos.x, pos.y, BLACK, params);
+            }
+            Drawable::Text(string, size, color) => {
+                let params = TextParams {
+                    font_size: *size,
+                    color: *color,
+                    ..Default::default()
+                };
+                let mut pos = pos;
+                pos.y += *size as f32;
+                text::draw_text_ex(string, pos.x, pos.y, params);
             }
         }
     }
@@ -125,6 +145,12 @@ impl Drawable {
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Debug)]
 pub struct TexID(u32);
+
+pub enum DrawType<WhichLogic> {
+    FromLogic(WhichLogic),
+    Offset(WhichLogic, Vec2),
+    FixedPoint(Vec2),
+}
 
 /// struct to store all textures in a game
 pub struct Textures {

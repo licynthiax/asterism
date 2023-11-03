@@ -110,13 +110,14 @@ impl Wall {
 #[derive(Copy, Clone)]
 pub struct Score {
     pub value: u16,
+    pub position: Vec2,
 }
 
 impl Score {
     pub(crate) const MIN: u16 = 0;
     pub(crate) const MAX: u16 = u16::MAX;
-    pub fn new(value: u16) -> Self {
-        Self { value }
+    pub fn new(value: u16, position: Vec2) -> Self {
+        Self { value, position }
     }
 }
 

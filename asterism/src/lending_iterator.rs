@@ -1,3 +1,5 @@
+use std::iter::Iterator;
+
 pub trait LendingIterator {
     type Item<'a>
     where
@@ -16,9 +18,21 @@ pub trait LendingIterator {
         }
     } */
 
-    fn zip<'item, I>(self, other_iter: I) -> Zip<Self, I>
+    fn zip_lending<'item, I>(self, other_iter: I) -> ZipLending<Self, I>
     where
         I: LendingIterator,
+        ZipLending<Self, I>: 'item,
+        Self: std::marker::Sized,
+    {
+        ZipLending {
+            iter_fst: self,
+            iter_snd: other_iter,
+        }
+    }
+
+    fn zip<'item, I>(self, other_iter: I) -> Zip<Self, I>
+    where
+        I: Iterator,
         Zip<Self, I>: 'item,
         Self: std::marker::Sized,
     {
@@ -53,13 +67,33 @@ impl<I: LendingIterator> LendingIterator for Filter<I> {
     }
 } */
 
-pub struct Zip<I: LendingIterator, J: LendingIterator> {
+pub struct ZipLending<I: LendingIterator, J: LendingIterator> {
     iter_fst: I,
     iter_snd: J,
 }
 
-impl<I: LendingIterator, J: LendingIterator> LendingIterator for Zip<I, J> {
+impl<I: LendingIterator, J: LendingIterator> LendingIterator for ZipLending<I, J> {
     type Item<'a> = (I::Item<'a>, J::Item<'a>) where I: 'a, J: 'a;
+
+    fn next(&mut self) -> Option<Self::Item<'_>> {
+        let fst = self.iter_fst.next();
+        let snd = self.iter_snd.next();
+
+        if let Some(fst) = fst {
+            snd.map(|snd| (fst, snd))
+        } else {
+            None
+        }
+    }
+}
+
+pub struct Zip<I: LendingIterator, J: Iterator> {
+    iter_fst: I,
+    iter_snd: J,
+}
+
+impl<I: LendingIterator, J: Iterator> LendingIterator for Zip<I, J> {
+    type Item<'a> = (I::Item<'a>, J::Item) where I: 'a, J: 'a;
 
     fn next(&mut self) -> Option<Self::Item<'_>> {
         let fst = self.iter_fst.next();
