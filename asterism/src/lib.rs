@@ -43,7 +43,7 @@ pub trait Logic {
     where
         Self: 'logic;
 
-    /// processes the reaction if a predicate condition is met
+    /// processes the reaction if a condition is met
     fn handle_predicate(&mut self, reaction: &Self::Reaction);
 
     /// exposes the data associated with a particular ""entity"" of the logic.

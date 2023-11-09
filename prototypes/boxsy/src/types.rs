@@ -23,20 +23,6 @@ macro_rules! id_impl_new {
 
 id_impl_new!([derive(Hash, Ord, PartialOrd)] TileID, [derive(Hash, Ord, PartialOrd)] CharacterID, [derive(Hash, Ord, PartialOrd)] RsrcID, [derive(Ord, PartialOrd)] LinkID, [derive(Hash)] UserQueryID);
 
-#[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
-pub(crate) enum QueryType {
-    ContactOnly,
-    ContactRoom,
-    LinkingEvent,
-    LinkingIdent,
-    TraverseRoom,
-    ControlEvent,
-    ControlFilter,
-    ResourceEvent,
-    ResourceIdent,
-    User(UserQueryID),
-}
-
 pub enum Ent {
     /// tile id of tile to add, position, room
     TileID(TileID, IVec2, usize),
@@ -166,5 +152,5 @@ pub enum CollisionEnt {
 }
 
 pub type CtrlEvent = ControlEvent<ActionID>;
-pub type ColEvent = Contact;
-pub type RsrcEvent = ResourceEvent<RsrcID>;
+pub type ColEvent = (usize, Contact); // usize is the current room number
+pub type RsrcEvent = ResourceEvent<RsrcID, u16>;

@@ -1,5 +1,5 @@
 [workspace]
 
-members = ["prototypes/paddles-engine"]
+members = ["prototypes/*"]
 exclude = ["prototypes/old"]
 
