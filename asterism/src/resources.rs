@@ -213,3 +213,150 @@ where
         self.resources.next().map(|(id, vals)| (*id, vals))
     }
 }
+
+/// An instant resource logic updates as it receives reactions and produces events immediately, rather than at the end of each event loop.
+pub struct InstantResources<ID, Value>
+where
+    ID: Copy + Ord + Debug,
+    Value: Add<Output = Value> + AddAssign + Ord + Copy,
+{
+    /// The items involved and their values.
+    pub items: BTreeMap<ID, PoolValues<Value>>,
+    /// A Vec of all transactions and if they were able to be completed or not. If not, also report an error (see [ResourceEvent] and [ResourceError]).
+    pub completed: Vec<ResourceEvent<ID, Value>>,
+}
+
+impl<ID, Value> InstantResources<ID, Value>
+where
+    ID: Copy + Ord + Debug,
+    Value: Add<Output = Value> + AddAssign + Ord + Copy,
+{
+    pub fn new() -> Self {
+        Self {
+            items: BTreeMap::new(),
+            completed: Vec::new(),
+        }
+    }
+
+    /// update function-- clears events once per game loop
+    pub fn update(&mut self) {
+        self.completed.clear();
+    }
+
+    /// Checks if the transaction is possible or not
+    fn is_possible(
+        &self,
+        item_type: &ID,
+        transaction: &Transaction<Value>,
+    ) -> Result<(), ResourceError> {
+        if let Some(PoolValues { val, min, max }) = self.items.get(item_type) {
+            match transaction {
+                Transaction::Change(amt) => {
+                    if *val + *amt > *max {
+                        Err(ResourceError::TooBig)
+                    } else if *val + *amt < *min {
+                        Err(ResourceError::TooSmall)
+                    } else {
+                        Ok(())
+                    }
+                }
+                _ => Ok(()),
+            }
+        } else {
+            Err(ResourceError::PoolNotFound)
+        }
+    }
+
+    /// Gets the value of the item based on its ID.
+    pub fn get_value_by_itemtype(&self, item_type: &ID) -> Option<Value> {
+        self.items.get(item_type).map(|PoolValues { val, .. }| *val)
+    }
+}
+
+impl<ID, Value> Logic for InstantResources<ID, Value>
+where
+    ID: Copy + Ord + Debug + 'static,
+    Value: Add<Output = Value> + AddAssign + Ord + Copy + 'static,
+{
+    type Event = ResourceEvent<ID, Value>;
+    type Reaction = ResourceReaction<ID, Value>;
+
+    type Ident = ID;
+    type IdentData<'a> = &'a mut PoolValues<Value> where Self: 'a;
+
+    type DataIter<'a> = InstRsrcDataIter<'a, ID, Value> where Self: 'a;
+
+    fn handle_predicate(&mut self, reaction: &Self::Reaction) {
+        let (item_type, change) = reaction;
+
+        if let Err(err) = self.is_possible(item_type, change) {
+            self.completed.push(ResourceEvent {
+                pool: *item_type,
+                transaction: *change,
+                event_type: ResourceEventType::TransactionUnsuccessful(err),
+            });
+            return;
+        }
+
+        let PoolValues { val, min, max } = self.items.get_mut(item_type).unwrap();
+        match change {
+            Transaction::Change(amt) => {
+                *val += *amt;
+            }
+            Transaction::Set(amt) => {
+                *val = *amt;
+            }
+            Transaction::SetMax(new_max) => {
+                *max = *new_max;
+            }
+            Transaction::SetMin(new_min) => {
+                *min = *new_min;
+            }
+        }
+        self.completed.push(ResourceEvent {
+            pool: *item_type,
+            transaction: *change,
+            event_type: ResourceEventType::PoolUpdated,
+        });
+    }
+
+    // dislike this panic. is it reasonable to put an option on the type? oh ugh i don't like the way these tables work
+    fn get_ident_data(&mut self, ident: Self::Ident) -> Self::IdentData<'_> {
+        self.items
+            .get_mut(&ident)
+            .unwrap_or_else(|| panic!("requested pool {:?} doesn't exist in resource logic", ident))
+    }
+
+    fn data_iter(&mut self) -> Self::DataIter<'_> {
+        InstRsrcDataIter {
+            resources: self.items.iter_mut(),
+        }
+    }
+
+    fn events(&self) -> &[Self::Event] {
+        &self.completed
+    }
+}
+
+pub struct InstRsrcDataIter<'rsrc, ID, Value>
+where
+    ID: Copy + Ord + Debug + 'static,
+    Value: Add<Output = Value> + AddAssign + Ord + Copy + 'static,
+{
+    resources: std::collections::btree_map::IterMut<'rsrc, ID, PoolValues<Value>>,
+}
+
+impl<'rsrc, ID, Value> LendingIterator for InstRsrcDataIter<'rsrc, ID, Value>
+where
+    ID: Copy + Ord + Debug + 'static,
+    Value: Add<Output = Value> + AddAssign + Ord + Copy + 'static,
+{
+    type Item<'a> = (
+        <InstantResources<ID, Value> as Logic>::Ident,
+        <InstantResources<ID, Value> as Logic>::IdentData<'a>,
+    ) where Self: 'a;
+
+    fn next(&mut self) -> Option<Self::Item<'_>> {
+        self.resources.next().map(|(id, vals)| (*id, vals))
+    }
+}
