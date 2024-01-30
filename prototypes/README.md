@@ -11,7 +11,7 @@ These engines attempt to compose logics to form an engine rather than an individ
 
 # Unsupported prototypes
 
-The prototypes in the `old/` folder are no longer the focus of the project.
+The prototypes in the `old/` folder are no longer the focus of the project, and aren't maintained!! They probably won't run!!
 
 ## Rendering and Communication Channels
 

@@ -11,13 +11,13 @@ async fn main() {
 
 fn init(game: &mut Game) {
     game.set_background(BLACK);
+
     let mut player = Player::new();
     player.pos = IVec2::new(3, 3);
     player.color = PURPLE;
 
-    let rocks = game.log_rsrc();
-    let num_rocks = Resource::new();
-    player.add_inventory_item(rocks, num_rocks);
+    let player_rocks = game.log_rsrc("rocks");
+    player.add_inventory_item(player_rocks, 0);
 
     game.set_player(player);
 
@@ -64,13 +64,28 @@ r#"
     }
 
     let mut character = Character::new();
+
+    let char_rocks = game.log_rsrc("rocks");
+    character.add_inventory_item(char_rocks, 2);
+
     character.pos = IVec2::new(1, 2);
     character.color = BROWN;
     let char_id = game.add_character(character, 0);
 
+    // oh wait this only does the transaction change for the first thing =_=
     game.add_collision_predicate(
         (0, Contact::Ent(0, char_id.idx() + 1)),
-        EngineAction::ChangeResource(Transaction::Change(1)),
+        EngineAction::ChangeResource(
+            PoolID::new(EntID::Player, player_rocks),
+            Transaction::Change(1),
+        ),
+    );
+    game.add_collision_predicate(
+        (0, Contact::Ent(0, char_id.idx() + 1)),
+        EngineAction::ChangeResource(
+            PoolID::new(EntID::Character(char_id), char_rocks),
+            Transaction::Change(1),
+        ),
     );
 
     game.add_link((0, IVec2::new(3, 5)), (1, IVec2::new(1, 1)));

@@ -3,20 +3,77 @@ use crate::types::*;
 use crate::*;
 
 pub enum EngineAction {
-    ChangeResource(Transaction<u16>),
+    /// change
+    ChangeResource(PoolID, Transaction<u16>),
     MoveTile(IVec2, IVec2),
-    MoveEnt(Option<usize>, IVec2),
+    MoveCharacter(Option<CharacterID>, IVec2),
+    /// move
     MoveRoom(LinkID),
-    AddEnt(Ent, IVec2),
-    AddTile(usize, IVec2),
-    AddPlayer(IVec2),
+    /// adds a character in a room (`usize`)
+    AddCharacter(Character, usize),
+    /// adds a tile with a tile id, in a room (`usize`), and with a position
+    AddTile(TileID, usize, IVec2),
     MovePlayer(IVec2),
     MovePlayerBy(IVec2),
 }
 
 impl EngineAction {
     pub fn perform_action(&self, state: &mut State, logics: &mut Logics) {
-        todo!()
+        match &self {
+            Self::ChangeResource(pool, transaction) => {
+                logics.resources.handle_predicate(&(*pool, *transaction));
+            }
+            Self::MoveTile(old_pos, new_pos) => {
+                if let Some(id) = logics.collision.tile_at_pos(old_pos) {
+                    logics
+                        .collision
+                        .handle_predicate(&CollisionReaction::SetTileAtPos(*new_pos, *id));
+                    logics
+                        .collision
+                        .handle_predicate(&CollisionReaction::RemoveTileAtPos(*old_pos));
+                }
+            }
+            Self::MoveCharacter(Some(ch), new_pos) => {
+                let node = logics.linking.graphs[0].get_current_node();
+                let room = state.links.get(&node).unwrap().0;
+                let col_idx = state
+                    .get_col_idx(EntID::Character(*ch), Some(room))
+                    .unwrap();
+                logics
+                    .collision
+                    .handle_predicate(&CollisionReaction::SetEntPos(col_idx, *new_pos));
+            }
+            Self::MoveCharacter(None, _) => {}
+            Self::MoveRoom(destination) => {
+                let node = logics.linking.graphs[0].get_current_node();
+                let room = state.links.get(&node).unwrap().0;
+                let (destination, new_pos) = *state.links.get(destination).unwrap();
+                entities::set_current_room(state, logics, room, destination);
+                logics
+                    .collision
+                    .handle_predicate(&CollisionReaction::SetEntPos(0, new_pos));
+            }
+            Self::AddCharacter(ch, room) => {
+                state.queue_add(Ent::Character(ch.clone(), *room));
+            }
+            Self::AddTile(tile_id, room, pos) => {
+                state.queue_add(Ent::TileID(*tile_id, *pos, *room))
+            }
+            Self::MovePlayer(pos) => {
+                logics
+                    .collision
+                    .handle_predicate(&CollisionReaction::SetEntPos(0, *pos));
+            }
+            Self::MovePlayerBy(delta) => {
+                let pos = match logics.collision.get_ident_data(ColIdent::EntIdx(0)) {
+                    TileMapColData::Ent { pos, .. } => *pos,
+                    _ => unreachable!(),
+                };
+                logics
+                    .collision
+                    .handle_predicate(&CollisionReaction::SetEntPos(0, pos + *delta));
+            }
+        }
     }
 }
 

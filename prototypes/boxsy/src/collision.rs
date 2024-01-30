@@ -4,19 +4,20 @@ use std::fmt::Debug;
 use asterism::{Event, LendingIterator, Logic, Reaction};
 use macroquad::math::IVec2;
 
-pub struct CollisionData<ID> {
+#[derive(Copy, Clone)]
+pub struct CollisionData<ID: Copy> {
     pub solid: bool,
     pub fixed: bool,
     pub id: ID,
 }
 
-impl<ID> CollisionData<ID> {
+impl<ID: Copy> CollisionData<ID> {
     pub fn new(solid: bool, fixed: bool, id: ID) -> Self {
         Self { solid, fixed, id }
     }
 }
 
-pub struct TileMapCollision<TileID: Debug, EntID> {
+pub struct TileMapCollision<TileID: Debug, EntID: Copy> {
     pub map: Vec<Vec<Option<TileID>>>,
     pub tile_solid: BTreeMap<TileID, bool>,
     pub positions: Vec<IVec2>,
@@ -71,7 +72,7 @@ pub enum TileMapColData<'logic, TileID, EntID> {
 
 impl<TileID, EntID> Reaction for CollisionReaction<TileID, EntID> {}
 
-impl<TileID: Copy + Eq + Ord + Debug, EntID: Copy> Logic for TileMapCollision<TileID, EntID> {
+impl<TileID: Copy + Eq + Ord + Debug, EntID: Eq + Copy> Logic for TileMapCollision<TileID, EntID> {
     type Event = Contact;
     type Reaction = CollisionReaction<TileID, EntID>;
 
@@ -143,7 +144,7 @@ impl<TileID: Copy + Eq + Ord + Debug, EntID: Copy> Logic for TileMapCollision<Ti
     }
 }
 
-impl<TileID: Eq + Ord + Copy + Debug, EntID> TileMapCollision<TileID, EntID> {
+impl<TileID: Eq + Ord + Copy + Debug, EntID: Eq + Copy> TileMapCollision<TileID, EntID> {
     pub fn new(width: usize, height: usize) -> Self {
         let mut collision = Self {
             map: Vec::new(),
@@ -167,10 +168,22 @@ impl<TileID: Eq + Ord + Copy + Debug, EntID> TileMapCollision<TileID, EntID> {
         });
     }
 
-    pub fn clear_entities(&mut self) {
-        self.positions.clear();
-        self.amt_moved.clear();
-        self.metadata.clear();
+    pub fn clear_entities_except(&mut self, id: EntID) {
+        let ent_info = self
+            .positions
+            .iter()
+            .zip(self.amt_moved.iter())
+            .zip(self.metadata.iter());
+        let mut positions = Vec::new();
+        let mut amt_moved = Vec::new();
+        let mut metadata = Vec::new();
+        for ((pos, moved), meta) in ent_info.filter(|(_, meta)| meta.id == id) {
+            positions.push(*pos);
+            amt_moved.push(*moved);
+            metadata.push(*meta);
+        }
+
+        std::mem::swap(&mut self.positions, &mut positions);
     }
 
     pub fn clear_tile_data(&mut self) {
@@ -339,7 +352,7 @@ where
 impl<'logic, TileID, EntID> LendingIterator for ColDataIter<'logic, TileID, EntID>
 where
     TileID: Copy + Eq + Ord + Debug,
-    EntID: Copy,
+    EntID: Copy + Eq,
 {
     type Item<'a> = (ColIdent, TileMapColData<'a, TileID, EntID>) where Self: 'a;
 

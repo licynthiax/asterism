@@ -97,6 +97,16 @@ pub struct Room {
     pub map: [[Option<TileID>; WORLD_SIZE]; WORLD_SIZE],
 }
 
+impl Room {
+    pub(crate) fn find_char(&self, id: CharacterID) -> Option<(usize, IVec2)> {
+        self.chars
+            .iter()
+            .enumerate()
+            .find(|(_, (char_id, _))| *char_id == id)
+            .map(|(i, (_, pos))| (i, *pos))
+    }
+}
+
 pub struct State {
     pub rooms: Vec<Room>,
     pub player: bool,
@@ -126,17 +136,40 @@ impl State {
         }
     }
 
-    pub fn get_col_idx(&self, i: usize, ent: CollisionEnt) -> usize {
+    #[allow(unused)]
+    /// looks for a character with the given id and spits out a tuple containing the room number,
+    /// character's index, and position. greedy; characters can only be added once
+    pub(crate) fn find_char(&self, id: CharacterID) -> Option<(usize, (usize, IVec2))> {
+        for (i, room) in self.rooms.iter().enumerate() {
+            let ch = room.find_char(id);
+            if ch.is_some() {
+                return ch.map(|info| (i, info));
+            }
+        }
+        None
+    }
+
+    /// returns index and position of character
+    pub(crate) fn find_char_in_room(&self, room: usize, id: CharacterID) -> Option<(usize, IVec2)> {
+        self.rooms[room].find_char(id)
+    }
+
+    /// room number is needed if the entity is a character
+    pub(crate) fn get_col_idx(&self, ent: EntID, room: Option<usize>) -> Option<usize> {
         match ent {
-            CollisionEnt::Player => 0,
-            CollisionEnt::Character => i + 1,
+            EntID::Player => Some(0),
+            EntID::Tile(_) => None,
+            EntID::Character(id) => self
+                .find_char_in_room(room.unwrap(), id)
+                .map(|(i, _)| i + 1),
         }
     }
 
-    pub fn queue_remove(&mut self, ent: EntID) {
+    #[allow(unused)]
+    pub(crate) fn queue_remove(&mut self, ent: EntID) {
         self.remove_queue.push(ent);
     }
-    pub fn queue_add(&mut self, ent: Ent) {
+    pub(crate) fn queue_add(&mut self, ent: Ent) {
         self.add_queue.push(ent);
     }
 }
@@ -144,7 +177,7 @@ impl State {
 pub struct Logics {
     pub control: KeyboardControl<ActionID, MacroquadInputWrapper>,
     pub collision: TileMapCollision<TileID, CollisionEnt>,
-    pub resources: QueuedResources<RsrcID, u16>,
+    pub resources: QueuedResources<PoolID, u16>,
     pub linking: GraphedLinking<LinkID>,
 }
 
@@ -255,7 +288,7 @@ fn control(game: &mut Game) {
 fn collision(game: &mut Game) {
     game.logics.collision.update();
 
-    for ((room, col_event), reaction) in game.events.collision.iter() {
+    for ((_room, col_event), reaction) in game.events.collision.iter() {
         if game
             .logics
             .collision
@@ -329,7 +362,7 @@ fn draw(game: &mut Game) {
             .get(&EntID::Player)
             .expect("player color not set");
         let pos = game.logics.collision.get_ident_data(ColIdent::EntIdx(
-            game.state.get_col_idx(0, CollisionEnt::Player),
+            game.state.get_col_idx(EntID::Player, None).unwrap(),
         ));
         if let TileMapColData::Ent { pos, .. } = pos {
             draw_rectangle(
@@ -376,23 +409,6 @@ fn setup(game: &mut Game) {
     let current_room = game.get_current_room();
 
     entities::load_room(&mut game.state, &mut game.logics, current_room);
-
-    let player = game.logics.collision.get_ident_data(ColIdent::EntIdx(0));
-    if let TileMapColData::Ent {
-        pos: &mut pos,
-        amt_moved,
-        ..
-    } = player
-    {
-        game.logics.collision.positions.insert(0, pos);
-        game.logics.collision.amt_moved.insert(0, amt_moved);
-        game.logics
-            .collision
-            .metadata
-            .insert(0, CollisionData::new(true, false, CollisionEnt::Player));
-    } else {
-        unreachable!();
-    }
 
     // control events default
     if game.events.control.is_empty() {

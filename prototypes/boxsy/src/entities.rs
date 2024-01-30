@@ -8,7 +8,7 @@ impl Game {
 
     pub fn set_player(&mut self, player: Player) {
         self.colors.colors.insert(EntID::Player, player.color);
-        self.logics.consume_player(player, !self.state.player);
+        self.logics.consume_player(player);
 
         if !self.state.player {
             for ((_, col_event), _) in self.events.collision.iter_mut() {
@@ -29,10 +29,22 @@ impl Game {
 
     pub fn add_character(&mut self, character: Character, room: usize) -> CharacterID {
         let id = CharacterID::new(self.state.char_id_max);
+        for (rsrc_id, val) in character.inventory.iter() {
+            self.logics.resources.items.insert(
+                PoolID::new(EntID::Character(id), *rsrc_id),
+                asterism::resources::PoolValues {
+                    val: *val,
+                    min: u16::MIN,
+                    max: u16::MAX,
+                },
+            );
+        }
+
+        self.state.rooms[room].chars.push((id, character.pos));
+
         self.colors
             .colors
             .insert(EntID::Character(id), character.color);
-        self.state.rooms[room].chars.push((id, character.pos));
 
         for ((_, col_event), _) in self.events.collision.iter_mut() {
             match col_event {
@@ -56,8 +68,8 @@ impl Game {
         id
     }
 
-    pub fn log_rsrc(&mut self) -> RsrcID {
-        let id = RsrcID::new(self.state.rsrc_id_max);
+    pub fn log_rsrc(&mut self, name: &'static str) -> RsrcID {
+        let id = RsrcID::new(self.state.rsrc_id_max, name);
         self.state.rsrc_id_max += 1;
         self.state.resources.push(id);
         id
@@ -88,10 +100,9 @@ impl Game {
 
         self.add_collision_predicate(
             (from.0, Contact::Tile(0, from.1)),
-            EngineAction::MoveRoom(link_from),
+            EngineAction::MoveRoom(link_to),
         );
 
-        self.add_link_predicate(link_from, link_to, EngineAction::AddPlayer(to.1));
         link_from
     }
 
@@ -169,7 +180,7 @@ impl Game {
         self.state.rooms[room].map[pos.y as usize][pos.x as usize] = Some(tile);
     }
 
-    pub fn remove_player(&mut self) {
+    pub(crate) fn remove_player(&mut self) {
         self.logics
             .collision
             .handle_predicate(&CollisionReaction::RemoveEnt(0));
@@ -208,7 +219,7 @@ impl Game {
         self.state.player = false;
     }
 
-    pub fn remove_character(&mut self, character: CharacterID) {
+    pub(crate) fn remove_character(&mut self, character: CharacterID) {
         let current_room = self.get_current_room();
         let mut ent_idx = None;
         for (i, room) in self.state.rooms.iter().enumerate() {
@@ -218,7 +229,9 @@ impl Game {
                     self.logics
                         .collision
                         .handle_predicate(&CollisionReaction::RemoveEnt(
-                            self.state.get_col_idx(idx, CollisionEnt::Character),
+                            self.state
+                                .get_col_idx(EntID::Character(character), Some(current_room))
+                                .unwrap(),
                         ));
                 }
                 break;
@@ -263,7 +276,7 @@ impl Game {
     }
 
     // unsure if this is needed atm
-    pub fn remove_tile_at_pos(&mut self, room: usize, pos: IVec2) {
+    pub(crate) fn remove_tile_at_pos(&mut self, room: usize, pos: IVec2) {
         self.state.rooms[room].map[pos.y as usize][pos.x as usize] = None;
         let current_room = self.get_current_room();
 
@@ -288,18 +301,19 @@ impl Game {
         }
     }
 
-    pub fn remove_rsrc(&mut self, rsrc: RsrcID) {
+    #[allow(unused)]
+    pub(crate) fn remove_rsrc(&mut self, pool: PoolID) {
         let ent_i = self
             .state
             .resources
             .iter()
-            .position(|rid| *rid == rsrc)
+            .position(|rid| *rid == pool.rsrc)
             .unwrap();
-        self.logics.resources.items.remove(&rsrc);
+        self.logics.resources.items.remove(&pool);
 
         let mut remove = Vec::new();
         for (idx, (rsrc_event, _)) in self.events.resource_event.iter().enumerate() {
-            if rsrc == rsrc_event.pool {
+            if pool == rsrc_event.pool {
                 remove.push(idx);
             }
         }
@@ -311,18 +325,12 @@ impl Game {
 }
 
 impl Logics {
-    pub fn consume_player(&mut self, player: Player, new: bool) {
-        if new {
-            self.collision.positions.insert(0, player.pos);
-            self.collision.amt_moved.insert(0, player.amt_moved);
-            self.collision
-                .metadata
-                .insert(0, CollisionData::new(true, false, CollisionEnt::Player));
-        } else {
-            self.collision.positions[0] = player.pos;
-            self.collision.amt_moved[0] = player.amt_moved;
-            self.collision.metadata[0] = CollisionData::new(true, false, CollisionEnt::Player);
-        }
+    pub fn consume_player(&mut self, player: Player) {
+        self.collision.positions.insert(0, player.pos);
+        self.collision.amt_moved.insert(0, player.amt_moved);
+        self.collision
+            .metadata
+            .insert(0, CollisionData::new(true, false, CollisionEnt::Player));
 
         if !self.control.mapping.is_empty() {
             self.control.mapping[0].clear();
@@ -333,29 +341,16 @@ impl Logics {
             self.control.add_key_map(0, keycode, act_id, valid);
         }
 
-        self.resources.items.clear();
         for (id, rsrc) in player.inventory.into_iter() {
-            self.consume_rsrc(id, rsrc);
+            self.resources.items.insert(
+                PoolID::new(EntID::Player, id),
+                PoolValues {
+                    val: rsrc,
+                    min: u16::MIN,
+                    max: u16::MAX,
+                },
+            );
         }
-    }
-
-    pub fn consume_character(&mut self, pos: IVec2) {
-        self.collision.positions.push(pos);
-        self.collision.amt_moved.push(IVec2::ZERO);
-        self.collision
-            .metadata
-            .push(CollisionData::new(true, true, CollisionEnt::Character));
-    }
-
-    pub fn consume_rsrc(&mut self, id: RsrcID, rsrc: Resource) {
-        self.resources.items.insert(
-            id,
-            PoolValues {
-                val: rsrc.val,
-                min: rsrc.min,
-                max: rsrc.max,
-            },
-        );
     }
 }
 
@@ -363,7 +358,7 @@ pub fn load_room(state: &mut State, logics: &mut Logics, room: usize) {
     logics
         .collision
         .clear_and_resize_map(WORLD_SIZE, WORLD_SIZE);
-    logics.collision.clear_entities();
+    logics.collision.clear_entities_except(CollisionEnt::Player);
 
     for (row, col_row) in state.rooms[room]
         .map
@@ -376,7 +371,12 @@ pub fn load_room(state: &mut State, logics: &mut Logics, room: usize) {
     }
 
     for (_, pos) in state.rooms[room].chars.iter() {
-        logics.consume_character(*pos);
+        logics.collision.positions.push(*pos);
+        logics.collision.amt_moved.push(IVec2::ZERO);
+        logics
+            .collision
+            .metadata
+            .push(CollisionData::new(true, true, CollisionEnt::Character));
     }
 }
 
