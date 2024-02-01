@@ -3,8 +3,8 @@ use crate::types::*;
 use crate::*;
 
 pub enum EngineAction {
-    /// change
-    ChangeResource(PoolID, Transaction<u16>),
+    /// change resource
+    ChangeResource(PoolID, Transaction<i16>),
     MoveTile(IVec2, IVec2),
     MoveCharacter(Option<CharacterID>, IVec2),
     /// move
@@ -72,6 +72,9 @@ impl EngineAction {
                 logics
                     .collision
                     .handle_predicate(&CollisionReaction::SetEntPos(0, pos + *delta));
+                logics
+                    .collision
+                    .handle_predicate(&CollisionReaction::SetEntVel(0, *delta));
             }
         }
     }

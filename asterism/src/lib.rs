@@ -49,8 +49,9 @@ pub trait Logic {
     /// exposes the data associated with a particular ""entity"" of the logic.
     fn get_ident_data(&mut self, ident: Self::Ident) -> Self::IdentData<'_>;
 
-    /// returns a [lending iterator]()
+    /// returns a [lending iterator](lending_iterator::LendingIterator) for the data of the logic
     fn data_iter(&mut self) -> Self::DataIter<'_>;
+    /// returns an array slice for the events of the logic
     fn events(&self) -> &[Self::Event];
 }
 

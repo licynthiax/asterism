@@ -26,6 +26,7 @@ use std::collections::BTreeMap;
 
 use asterism::{
     control::{KeyboardControl, MacroquadInputWrapper},
+    lending_iterator::*,
     linking::GraphedLinking,
     resources::QueuedResources,
 };
@@ -177,7 +178,7 @@ impl State {
 pub struct Logics {
     pub control: KeyboardControl<ActionID, MacroquadInputWrapper>,
     pub collision: TileMapCollision<TileID, CollisionEnt>,
-    pub resources: QueuedResources<PoolID, u16>,
+    pub resources: QueuedResources<PoolID, i16>,
     pub linking: GraphedLinking<LinkID>,
 }
 
@@ -336,69 +337,88 @@ fn linking(game: &mut Game) {
 
 fn draw(game: &mut Game) {
     clear_background(game.colors.background_color);
-    for (y, row) in game.logics.collision.map.iter().enumerate() {
-        for (x, tile) in row.iter().enumerate() {
-            if let Some(tile) = tile {
+
+    let current_room = game.get_current_room();
+    let mut col_data = game.logics.collision.data_iter();
+
+    while let Some((id, col_data)) = col_data.next() {
+        match (id, col_data) {
+            (ColIdent::Position(pos), TileMapColData::Position { id: tile, .. }) => {
                 let color = game
                     .colors
                     .colors
                     .get(&EntID::Tile(*tile))
                     .unwrap_or_else(|| panic!("tile {} color undefined", tile.idx()));
                 draw_rectangle(
-                    x as f32 * TILE_SIZE as f32,
-                    y as f32 * TILE_SIZE as f32,
+                    pos.x as f32 * TILE_SIZE as f32,
+                    pos.y as f32 * TILE_SIZE as f32,
                     TILE_SIZE as f32,
                     TILE_SIZE as f32,
                     *color,
                 );
             }
+            (ColIdent::EntIdx(idx), TileMapColData::Ent { pos, id: ent, .. }) => match ent {
+                CollisionEnt::Player => {
+                    let color = game
+                        .colors
+                        .colors
+                        .get(&EntID::Player)
+                        .expect("player color not set");
+                    draw_rectangle(
+                        pos.x as f32 * TILE_SIZE as f32,
+                        pos.y as f32 * TILE_SIZE as f32,
+                        TILE_SIZE as f32,
+                        TILE_SIZE as f32,
+                        *color,
+                    );
+                }
+                CollisionEnt::Character => {
+                    let character = game.state.rooms[current_room].chars[idx - 1].0;
+                    let color = game
+                        .colors
+                        .colors
+                        .get(&EntID::Character(character))
+                        .unwrap_or_else(|| panic!("character {} color defined", character.idx()));
+                    draw_rectangle(
+                        pos.x as f32 * TILE_SIZE as f32,
+                        pos.y as f32 * TILE_SIZE as f32,
+                        TILE_SIZE as f32,
+                        TILE_SIZE as f32,
+                        *color,
+                    );
+                }
+            },
+            _ => unreachable!(),
         }
     }
 
-    if game.state.player {
-        let color = game
-            .colors
-            .colors
-            .get(&EntID::Player)
-            .expect("player color not set");
-        let pos = game.logics.collision.get_ident_data(ColIdent::EntIdx(
-            game.state.get_col_idx(EntID::Player, None).unwrap(),
-        ));
-        if let TileMapColData::Ent { pos, .. } = pos {
-            draw_rectangle(
-                pos.x as f32 * TILE_SIZE as f32,
-                pos.y as f32 * TILE_SIZE as f32,
-                TILE_SIZE as f32,
-                TILE_SIZE as f32,
-                *color,
-            );
-        }
-    }
-
-    let current_room = game.get_current_room();
-
-    // skips the first element in the collision entity list (true casts to 1, false casts to 0) if a player is set
-    for (i, pos) in game
-        .logics
-        .collision
-        .positions
-        .iter()
-        .skip(game.state.player as usize)
-        .enumerate()
+    for RsrcEvent {
+        pool, transaction, ..
+    } in game.logics.resources.events()
     {
-        let character = game.state.rooms[current_room].chars[i].0;
-        let color = game
-            .colors
-            .colors
-            .get(&EntID::Character(character))
-            .unwrap_or_else(|| panic!("character {} color defined", character.idx()));
-        draw_rectangle(
-            pos.x as f32 * TILE_SIZE as f32,
-            pos.y as f32 * TILE_SIZE as f32,
-            TILE_SIZE as f32,
-            TILE_SIZE as f32,
-            *color,
-        );
+        if let Transaction::Change(amt) = transaction {
+            if pool.attached_to == EntID::Player {
+                /* if let TileMapColData::Ent { pos, .. } =
+                    game.logics.collision.get_ident_data(ColIdent::EntIdx(0))
+                {
+
+                    draw_text(
+                        &message,
+                        pos.x as f32 * TILE_SIZE as f32,
+                        pos.y as f32 * TILE_SIZE as f32,
+                        (TILE_SIZE / 2) as f32,
+                        WHITE,
+                    );
+                } */
+
+                #[allow(clippy::comparison_chain)]
+                if *amt > 0 {
+                    println!("{} get!", pool.rsrc.name());
+                } else if *amt < 0 {
+                    println!("{} lost :(", pool.rsrc.name());
+                }
+            }
+        }
     }
 }
 

@@ -34,8 +34,8 @@ impl Game {
                 PoolID::new(EntID::Character(id), *rsrc_id),
                 asterism::resources::PoolValues {
                     val: *val,
-                    min: u16::MIN,
-                    max: u16::MAX,
+                    min: i16::MIN,
+                    max: i16::MAX,
                 },
             );
         }
@@ -132,13 +132,13 @@ impl Game {
         let room = self.state.rooms.len();
         self.state.rooms.push(Room::default());
 
-        let map = map.trim();
-
         let map_length = WORLD_SIZE * WORLD_SIZE + WORLD_SIZE - 1;
         #[allow(clippy::comparison_chain)]
         if map.len() > map_length {
+            dbg!(map_length, map.len());
             return Err("map is too big".to_string());
         } else if map.len() < map_length {
+            dbg!(map_length, map.len());
             return Err("map is too small".to_string());
         }
 
@@ -346,8 +346,8 @@ impl Logics {
                 PoolID::new(EntID::Player, id),
                 PoolValues {
                     val: rsrc,
-                    min: u16::MIN,
-                    max: u16::MAX,
+                    min: i16::MIN,
+                    max: i16::MAX,
                 },
             );
         }

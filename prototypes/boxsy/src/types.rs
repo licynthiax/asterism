@@ -80,7 +80,7 @@ pub struct Player {
     pub pos: IVec2,
     pub amt_moved: IVec2,
     pub color: Color,
-    pub inventory: Vec<(RsrcID, u16)>,
+    pub inventory: Vec<(RsrcID, i16)>,
     pub controls: Vec<(ActionID, KeyCode, bool)>,
 }
 
@@ -110,7 +110,7 @@ impl Player {
         *valid_old = valid;
     }
 
-    pub fn add_inventory_item(&mut self, id: RsrcID, val: u16) {
+    pub fn add_inventory_item(&mut self, id: RsrcID, val: i16) {
         self.inventory.push((id, val));
     }
 }
@@ -143,7 +143,7 @@ impl Tile {
 #[derive(Clone)]
 pub struct Character {
     /// resource id and starting value
-    pub inventory: Vec<(RsrcID, u16)>,
+    pub inventory: Vec<(RsrcID, i16)>,
     pub pos: IVec2,
     pub color: Color,
 }
@@ -157,7 +157,7 @@ impl Character {
         }
     }
 
-    pub fn add_inventory_item(&mut self, id: RsrcID, val: u16) {
+    pub fn add_inventory_item(&mut self, id: RsrcID, val: i16) {
         self.inventory.push((id, val));
     }
 }
@@ -174,4 +174,4 @@ pub enum CollisionEnt {
 
 pub type CtrlEvent = ControlEvent<ActionID>;
 pub type ColEvent = (usize, Contact); // usize is the current room number
-pub type RsrcEvent = ResourceEvent<PoolID, u16>;
+pub type RsrcEvent = ResourceEvent<PoolID, i16>;

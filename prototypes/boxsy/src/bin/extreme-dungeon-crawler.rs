@@ -16,7 +16,7 @@ fn init(game: &mut Game) {
     player.pos = IVec2::new(3, 3);
     player.color = PURPLE;
 
-    let player_rocks = game.log_rsrc("rocks");
+    let player_rocks = game.log_rsrc("rock");
     player.add_inventory_item(player_rocks, 0);
 
     game.set_player(player);
@@ -36,27 +36,23 @@ fn init(game: &mut Game) {
     game.log_tile_info(Tile::new());
 
     #[rustfmt::skip]
-    let maps = [r#"
-00000000
+    let maps = [r#"00000000
 0      0
 0   2  0
 0      0
 0      0
 0  3   0
 0      0
-00000000
-    "#,
+00000000"#,
 
-r#"
-00000000
+r#"00000000
 0      0
 0      0
 0   1  0
 0      0
 0      0
 0      0
-00000000
-    "#
+00000000"#
     ];
 
     for map in maps.iter() {
@@ -65,14 +61,13 @@ r#"
 
     let mut character = Character::new();
 
-    let char_rocks = game.log_rsrc("rocks");
+    let char_rocks = game.log_rsrc("rock");
     character.add_inventory_item(char_rocks, 2);
 
     character.pos = IVec2::new(1, 2);
     character.color = BROWN;
     let char_id = game.add_character(character, 0);
 
-    // oh wait this only does the transaction change for the first thing =_=
     game.add_collision_predicate(
         (0, Contact::Ent(0, char_id.idx() + 1)),
         EngineAction::ChangeResource(
@@ -84,7 +79,7 @@ r#"
         (0, Contact::Ent(0, char_id.idx() + 1)),
         EngineAction::ChangeResource(
             PoolID::new(EntID::Character(char_id), char_rocks),
-            Transaction::Change(1),
+            Transaction::Change(-1),
         ),
     );
 
