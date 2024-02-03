@@ -52,6 +52,15 @@ r#"00000000
 0      0
 0      0
 0      0
+00000000"#,
+
+r#"00000000
+0      0
+0      0
+0      0
+0      0
+0  3   0
+0      0
 00000000"#
     ];
 
@@ -83,5 +92,20 @@ r#"00000000
         ),
     );
 
-    game.add_link((0, IVec2::new(3, 5)), (1, IVec2::new(1, 1)));
+    game.add_link((0, CollisionEnt::Character(char_id)), (1, IVec2::new(1, 1)));
+
+    // not an actual tile (won't do anything)
+    game.add_link(
+        (1, CollisionEnt::Tile(IVec2::new(2, 3))),
+        (0, IVec2::new(1, 3)),
+    );
+
+    game.add_link(
+        (1, CollisionEnt::Tile(IVec2::new(4, 3))),
+        (2, IVec2::new(3, 1)),
+    );
+    game.add_link(
+        (2, CollisionEnt::Tile(IVec2::new(3, 5))),
+        (1, IVec2::new(3, 1)),
+    );
 }

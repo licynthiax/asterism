@@ -82,8 +82,7 @@ impl Game {
     }
 
     pub fn get_current_room(&self) -> usize {
-        let node = self.logics.linking.graphs[0].get_current_node();
-        self.state.links.get(&node).unwrap().0
+        self.logics.linking.graphs[0].get_current_node()
     }
 }
 
@@ -114,8 +113,6 @@ pub struct State {
     pub resources: Vec<RsrcID>,
     rsrc_id_max: usize,
     char_id_max: usize,
-    pub links: BTreeMap<LinkID, (usize, IVec2)>,
-    link_id_max: usize,
     tile_type_count: usize,
     add_queue: Vec<Ent>,
     remove_queue: Vec<EntID>,
@@ -129,8 +126,6 @@ impl State {
             char_id_max: 0,
             resources: Vec::new(),
             rsrc_id_max: 0,
-            links: BTreeMap::new(),
-            link_id_max: 0,
             tile_type_count: 0,
             add_queue: Vec::new(),
             remove_queue: Vec::new(),
@@ -156,14 +151,9 @@ impl State {
     }
 
     /// room number is needed if the entity is a character
-    pub(crate) fn get_col_idx(&self, ent: EntID, room: Option<usize>) -> Option<usize> {
-        match ent {
-            EntID::Player => Some(0),
-            EntID::Tile(_) => None,
-            EntID::Character(id) => self
-                .find_char_in_room(room.unwrap(), id)
-                .map(|(i, _)| i + 1),
-        }
+    pub(crate) fn get_col_idx(&self, id: CharacterID, room: Option<usize>) -> Option<usize> {
+        self.find_char_in_room(room.unwrap(), id)
+            .map(|(i, _)| i + 1)
     }
 
     #[allow(unused)]
@@ -177,9 +167,10 @@ impl State {
 
 pub struct Logics {
     pub control: KeyboardControl<ActionID, MacroquadInputWrapper>,
-    pub collision: TileMapCollision<TileID, CollisionEnt>,
+    pub collision: TileMapCollision<TileID, ColEntType>,
     pub resources: QueuedResources<PoolID, i16>,
-    pub linking: GraphedLinking<LinkID>,
+    // usize = room number
+    pub linking: GraphedLinking<usize>,
 }
 
 impl Logics {
@@ -287,15 +278,16 @@ fn control(game: &mut Game) {
 }
 
 fn collision(game: &mut Game) {
+    let current_room = game.get_current_room();
     game.logics.collision.update();
 
-    for ((_room, col_event), reaction) in game.events.collision.iter() {
+    for ((room, col_event), reaction) in game.events.collision.iter() {
         if game
             .logics
             .collision
             .events()
             .iter()
-            .any(|event| col_event == event)
+            .any(|event| col_event == event && *room == current_room)
         {
             reaction.perform_action(&mut game.state, &mut game.logics);
         }
@@ -337,8 +329,8 @@ fn linking(game: &mut Game) {
 
 fn draw(game: &mut Game) {
     clear_background(game.colors.background_color);
-
     let current_room = game.get_current_room();
+
     let mut col_data = game.logics.collision.data_iter();
 
     while let Some((id, col_data)) = col_data.next() {
@@ -358,7 +350,7 @@ fn draw(game: &mut Game) {
                 );
             }
             (ColIdent::EntIdx(idx), TileMapColData::Ent { pos, id: ent, .. }) => match ent {
-                CollisionEnt::Player => {
+                ColEntType::Player => {
                     let color = game
                         .colors
                         .colors
@@ -372,7 +364,7 @@ fn draw(game: &mut Game) {
                         *color,
                     );
                 }
-                CollisionEnt::Character => {
+                ColEntType::Character => {
                     let character = game.state.rooms[current_room].chars[idx - 1].0;
                     let color = game
                         .colors

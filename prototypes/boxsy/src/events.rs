@@ -7,8 +7,8 @@ pub enum EngineAction {
     ChangeResource(PoolID, Transaction<i16>),
     MoveTile(IVec2, IVec2),
     MoveCharacter(Option<CharacterID>, IVec2),
-    /// move
-    MoveRoom(LinkID),
+    /// move room-- original room, and position
+    MoveRoom(usize, IVec2),
     /// adds a character in a room (`usize`)
     AddCharacter(Character, usize),
     /// adds a tile with a tile id, in a room (`usize`), and with a position
@@ -34,24 +34,23 @@ impl EngineAction {
                 }
             }
             Self::MoveCharacter(Some(ch), new_pos) => {
-                let node = logics.linking.graphs[0].get_current_node();
-                let room = state.links.get(&node).unwrap().0;
-                let col_idx = state
-                    .get_col_idx(EntID::Character(*ch), Some(room))
-                    .unwrap();
+                let room = logics.linking.graphs[0].get_current_node();
+                let col_idx = state.get_col_idx(*ch, Some(room)).unwrap();
                 logics
                     .collision
                     .handle_predicate(&CollisionReaction::SetEntPos(col_idx, *new_pos));
             }
             Self::MoveCharacter(None, _) => {}
-            Self::MoveRoom(destination) => {
-                let node = logics.linking.graphs[0].get_current_node();
-                let room = state.links.get(&node).unwrap().0;
-                let (destination, new_pos) = *state.links.get(destination).unwrap();
-                entities::set_current_room(state, logics, room, destination);
+            Self::MoveRoom(to, pos) => {
+                // this is the current room
+                let from = logics.linking.graphs[0].get_current_node();
+                logics
+                    .linking
+                    .handle_predicate(&LinkingReaction::Traverse(0, *to));
+                entities::set_current_room(state, logics, from, *to);
                 logics
                     .collision
-                    .handle_predicate(&CollisionReaction::SetEntPos(0, new_pos));
+                    .handle_predicate(&CollisionReaction::SetEntPos(0, *pos));
             }
             Self::AddCharacter(ch, room) => {
                 state.queue_add(Ent::Character(ch.clone(), *room));
@@ -113,7 +112,7 @@ impl Game {
         self.events.control.push((key_event, on_key_event));
     }
 
-    pub fn add_link_predicate(&mut self, from: LinkID, to: LinkID, when_traversed: EngineAction) {
+    pub fn add_link_predicate(&mut self, to: usize, from: usize, when_traversed: EngineAction) {
         let to = self.logics.linking.graphs[0].graph.node_idx(&to).unwrap();
         let from = self.logics.linking.graphs[0].graph.node_idx(&from).unwrap();
         let event = LinkingEvent {

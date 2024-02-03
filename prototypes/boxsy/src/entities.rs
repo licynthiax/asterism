@@ -75,35 +75,27 @@ impl Game {
         id
     }
 
-    pub fn add_link(&mut self, from: (usize, IVec2), to: (usize, IVec2)) -> LinkID {
-        let mut find = |pos| match self
-            .state
-            .links
-            .iter()
-            .find(|(_, location)| **location == pos)
-        {
-            Some((id, _)) => *id,
-            None => {
-                let id = LinkID::new(self.state.link_id_max);
-                self.logics.linking.graphs[0].add_node(id);
-                self.state.link_id_max += 1;
-                self.state.links.insert(id, pos);
-                id
+    pub fn add_link(&mut self, from: (usize, CollisionEnt), to: (usize, IVec2)) {
+        self.logics.linking.graphs[0].graph.add_edge(from.0, to.0);
+
+        match from.1 {
+            CollisionEnt::Player => unreachable!(),
+            CollisionEnt::Tile(pos) => {
+                self.add_collision_predicate(
+                    (from.0, Contact::Tile(0, pos)),
+                    EngineAction::MoveRoom(to.0, to.1),
+                );
             }
-        };
-        let link_from = find(from);
-        let link_to = find(to);
-
-        self.logics.linking.graphs[0]
-            .graph
-            .add_edge(link_from.idx(), link_to.idx());
-
-        self.add_collision_predicate(
-            (from.0, Contact::Tile(0, from.1)),
-            EngineAction::MoveRoom(link_to),
-        );
-
-        link_from
+            CollisionEnt::Character(id) => {
+                self.add_collision_predicate(
+                    (
+                        from.0,
+                        Contact::Ent(0, self.state.get_col_idx(id, Some(from.0)).unwrap()),
+                    ),
+                    EngineAction::MoveRoom(to.0, to.1),
+                );
+            }
+        }
     }
 
     pub fn set_num_rooms(&mut self, rooms: usize) {
@@ -115,23 +107,18 @@ impl Game {
     /// # Example
     ///
     /// ```
-    /// let map = r#"
-    /// 0000000
+    /// let map = r#"0000000
     /// 0     0
     /// 0   1 0
     /// 0 1   0
     /// 0   2 0
     /// 0     0
     /// 0     0
-    /// 0000000
-    /// "#;
+    /// 0000000"#;
     ///
     /// game.add_room_from_str(map);
     /// ```
     pub fn add_room_from_str(&mut self, map: &str) -> Result<usize, String> {
-        let room = self.state.rooms.len();
-        self.state.rooms.push(Room::default());
-
         let map_length = WORLD_SIZE * WORLD_SIZE + WORLD_SIZE - 1;
         #[allow(clippy::comparison_chain)]
         if map.len() > map_length {
@@ -141,6 +128,9 @@ impl Game {
             dbg!(map_length, map.len());
             return Err("map is too small".to_string());
         }
+
+        let room = self.state.rooms.len();
+        self.state.rooms.push(Room::default());
 
         let mut x = 0;
         let mut y = 0;
@@ -162,6 +152,7 @@ impl Game {
                 return Err(format!("unrecognized character: '{}'", ch));
             }
         }
+        self.logics.linking.graphs[0].add_node(room);
 
         Ok(self.state.rooms.len() - 1)
     }
@@ -230,7 +221,7 @@ impl Game {
                         .collision
                         .handle_predicate(&CollisionReaction::RemoveEnt(
                             self.state
-                                .get_col_idx(EntID::Character(character), Some(current_room))
+                                .get_col_idx(character, Some(current_room))
                                 .unwrap(),
                         ));
                 }
@@ -330,7 +321,7 @@ impl Logics {
         self.collision.amt_moved.insert(0, player.amt_moved);
         self.collision
             .metadata
-            .insert(0, CollisionData::new(true, false, CollisionEnt::Player));
+            .insert(0, CollisionData::new(true, false, ColEntType::Player));
 
         if !self.control.mapping.is_empty() {
             self.control.mapping[0].clear();
@@ -358,7 +349,7 @@ pub fn load_room(state: &mut State, logics: &mut Logics, room: usize) {
     logics
         .collision
         .clear_and_resize_map(WORLD_SIZE, WORLD_SIZE);
-    logics.collision.clear_entities_except(CollisionEnt::Player);
+    logics.collision.clear_entities_except(ColEntType::Player);
 
     for (row, col_row) in state.rooms[room]
         .map
@@ -376,7 +367,7 @@ pub fn load_room(state: &mut State, logics: &mut Logics, room: usize) {
         logics
             .collision
             .metadata
-            .push(CollisionData::new(true, true, CollisionEnt::Character));
+            .push(CollisionData::new(true, true, ColEntType::Character));
     }
 }
 

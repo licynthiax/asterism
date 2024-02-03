@@ -21,7 +21,7 @@ macro_rules! id_impl_new {
     };
 }
 
-id_impl_new!([derive(Hash, Ord, PartialOrd)] TileID, [derive(Hash, Ord, PartialOrd)] CharacterID, [derive(Ord, PartialOrd)] LinkID, [derive(Hash)] UserQueryID);
+id_impl_new!([derive(Hash, Ord, PartialOrd)] TileID, [derive(Hash, Ord, PartialOrd)] CharacterID);
 
 #[derive(Hash, Ord, PartialOrd, Clone, Copy, PartialEq, Eq, Debug)]
 pub struct PoolID {
@@ -166,10 +166,17 @@ use crate::collision::Contact;
 use asterism::control::ControlEvent;
 use asterism::resources::ResourceEvent;
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ColEntType {
+    Player,
+    Character,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum CollisionEnt {
     Player,
-    Character,
+    Tile(IVec2),
+    Character(CharacterID),
 }
 
 pub type CtrlEvent = ControlEvent<ActionID>;
