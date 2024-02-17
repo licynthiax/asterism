@@ -9,11 +9,6 @@ edition = "2018"
 macroquad = "0.4.4"
 futures = "0.3.17"
 
-# might feature gate this
-json = "*"
-serde = { version = "1.0.104", features = ["derive"] }
-serde_json = "1.0.48"
-
 # Bevy takes a long time to build and we're not actively using it
 bevy_input = { version = "0.4.0", optional = true }
 
