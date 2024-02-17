@@ -1,11 +1,13 @@
 [package]
-name = "boxsy"
+name = "ceptre-annotes"
 version = "0.1.0"
+edition = "2021"
 authors = ["cynthia <licynthia.x@gmail.com>"]
-edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-macroquad = "0.4.4"
+nom = "7.1.3"
+serde_json = "1.0"
 asterism = { path = "../../asterism" }
+boxsy = { path = "../boxsy" }

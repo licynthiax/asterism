@@ -1,4 +1,4 @@
-use bitsy::*;
+use boxsy::*;
 use macroquad::prelude::*;
 
 #[macroquad::main(window_conf)]
