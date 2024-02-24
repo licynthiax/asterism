@@ -1,0 +1,435 @@
+{
+  "builtins": [
+    {
+      "name": "nat",
+      "builtin": "NAT"
+    },
+    {
+      "name": "z",
+      "builtin": "NAT_ZERO"
+    },
+    {
+      "name": "s",
+      "builtin": "NAT_SUCC"
+    }
+  ],
+  "header": {
+    "types": [
+      {
+        "name": "nat",
+        "tp": [
+          {
+            "name": "z",
+            "args": []
+          },
+          {
+            "name": "s",
+            "args": [
+              "nat"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "player_id",
+        "tp": [
+          {
+            "name": "p1",
+            "args": []
+          }
+        ],
+        "annote": " synthesis { control, collision, resource }"
+      },
+      {
+        "name": "room_id",
+        "tp": [
+          {
+            "name": "r1",
+            "args": []
+          },
+          {
+            "name": "r2",
+            "args": []
+          },
+          {
+            "name": "r3",
+            "args": []
+          }
+        ],
+        "annote": " synthesis { linking }"
+      },
+      {
+        "name": "ch_id",
+        "tp": [
+          {
+            "name": "c1",
+            "args": []
+          },
+          {
+            "name": "c2",
+            "args": []
+          }
+        ],
+        "annote": " synthesis { collision, resource }"
+      },
+      {
+        "name": "rsrc_id",
+        "tp": [
+          {
+            "name": "rocks",
+            "args": []
+          },
+          {
+            "name": "stones",
+            "args": []
+          }
+        ],
+        "annote": " data { resource }"
+      },
+      {
+        "name": "rsrc",
+        "tp": [
+          {
+            "name": "resource",
+            "args": [
+              "rsrc_id",
+              "nat"
+            ]
+          }
+        ],
+        "annote": " synthesis { resource }"
+      },
+      {
+        "name": "link",
+        "tp": [
+          {
+            "name": "exit",
+            "args": [
+              "room_id"
+            ]
+          }
+        ],
+        "annote": " synthesis { linking, collision }"
+      }
+    ],
+    "preds": [
+      {
+        "name": "player_in_room",
+        "terms": [
+          "player_id",
+          "room_id"
+        ],
+        "annote": " query { linking, collision }"
+      },
+      {
+        "name": "character_in_room",
+        "terms": [
+          "ch_id",
+          "room_id"
+        ],
+        "annote": " query { linking, resource }"
+      },
+      {
+        "name": "player_has",
+        "terms": [
+          "player_id",
+          "rsrc"
+        ],
+        "annote": " query { resource }"
+      },
+      {
+        "name": "character_has",
+        "terms": [
+          "ch_id",
+          "rsrc"
+        ],
+        "annote": " query { resource }"
+      },
+      {
+        "name": "character_link",
+        "terms": [
+          "ch_id",
+          "link"
+        ],
+        "annote": " data { linking, collision }"
+      },
+      {
+        "name": "tile_link",
+        "terms": [
+          "room_id",
+          "link"
+        ],
+        "annote": " data { linking, collision }"
+      }
+    ]
+  },
+  "bwd_rules": [],
+  "stages": [
+    {
+      "name": "play",
+      "nondet": "Interactive",
+      "body": [
+        {
+          "name": "take_tile_exit",
+          "pivars": 3,
+          "lhs": [
+            {
+              "name": "player_in_room",
+              "mode": "Lin",
+              "terms": [
+                "(Var 0)",
+                "(Var 1)"
+              ]
+            },
+            {
+              "name": "tile_link",
+              "mode": "Lin",
+              "terms": [
+                "(Var 1)",
+                "(exit (Var 2))"
+              ]
+            }
+          ],
+          "rhs": [
+            {
+              "name": "player_in_room",
+              "mode": "Lin",
+              "terms": [
+                "(Var 0)",
+                "(Var 2)"
+              ]
+            },
+            {
+              "name": "tile_link",
+              "mode": "Lin",
+              "terms": [
+                "(Var 1)",
+                "(exit (Var 2))"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "take_char_exit",
+          "pivars": 4,
+          "lhs": [
+            {
+              "name": "player_in_room",
+              "mode": "Lin",
+              "terms": [
+                "(Var 0)",
+                "(Var 1)"
+              ]
+            },
+            {
+              "name": "character_link",
+              "mode": "Lin",
+              "terms": [
+                "(Var 2)",
+                "(exit (Var 3))"
+              ]
+            },
+            {
+              "name": "character_in_room",
+              "mode": "Lin",
+              "terms": [
+                "(Var 2)",
+                "(Var 1)"
+              ]
+            }
+          ],
+          "rhs": [
+            {
+              "name": "player_in_room",
+              "mode": "Lin",
+              "terms": [
+                "(Var 0)",
+                "(Var 3)"
+              ]
+            },
+            {
+              "name": "character_in_room",
+              "mode": "Lin",
+              "terms": [
+                "(Var 2)",
+                "(Var 1)"
+              ]
+            },
+            {
+              "name": "character_link",
+              "mode": "Lin",
+              "terms": [
+                "(Var 2)",
+                "(exit (Var 3))"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "take_rsrc",
+          "pivars": 6,
+          "lhs": [
+            {
+              "name": "player_in_room",
+              "mode": "Lin",
+              "terms": [
+                "(Var 0)",
+                "(Var 1)"
+              ]
+            },
+            {
+              "name": "character_in_room",
+              "mode": "Lin",
+              "terms": [
+                "(Var 2)",
+                "(Var 1)"
+              ]
+            },
+            {
+              "name": "character_has",
+              "mode": "Lin",
+              "terms": [
+                "(Var 2)",
+                "(resource (Var 3) (s (Var 4)))"
+              ]
+            },
+            {
+              "name": "player_has",
+              "mode": "Lin",
+              "terms": [
+                "(Var 0)",
+                "(resource (Var 3) (Var 5))"
+              ]
+            }
+          ],
+          "rhs": [
+            {
+              "name": "player_has",
+              "mode": "Lin",
+              "terms": [
+                "(Var 0)",
+                "(resource (Var 3) (s (Var 5)))"
+              ]
+            },
+            {
+              "name": "character_has",
+              "mode": "Lin",
+              "terms": [
+                "(Var 2)",
+                "(resource (Var 3) (Var 4))"
+              ]
+            },
+            {
+              "name": "character_in_room",
+              "mode": "Lin",
+              "terms": [
+                "(Var 2)",
+                "(Var 1)"
+              ]
+            },
+            {
+              "name": "player_in_room",
+              "mode": "Lin",
+              "terms": [
+                "(Var 0)",
+                "(Var 1)"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "links": [],
+  "init_stage": "play",
+  "init_state": [
+    {
+      "name": "player_in_room",
+      "mode": "Lin",
+      "terms": [
+        "p1",
+        "r1"
+      ]
+    },
+    {
+      "name": "character_in_room",
+      "mode": "Lin",
+      "terms": [
+        "c1",
+        "r2"
+      ]
+    },
+    {
+      "name": "character_in_room",
+      "mode": "Lin",
+      "terms": [
+        "c2",
+        "r3"
+      ]
+    },
+    {
+      "name": "character_link",
+      "mode": "Lin",
+      "terms": [
+        "c1",
+        "(exit r3)"
+      ]
+    },
+    {
+      "name": "tile_link",
+      "mode": "Lin",
+      "terms": [
+        "r1",
+        "(exit r2)"
+      ]
+    },
+    {
+      "name": "tile_link",
+      "mode": "Lin",
+      "terms": [
+        "r2",
+        "(exit r1)"
+      ]
+    },
+    {
+      "name": "tile_link",
+      "mode": "Lin",
+      "terms": [
+        "r3",
+        "(exit r2)"
+      ]
+    },
+    {
+      "name": "player_has",
+      "mode": "Lin",
+      "terms": [
+        "p1",
+        "(resource rocks 0)"
+      ]
+    },
+    {
+      "name": "player_has",
+      "mode": "Lin",
+      "terms": [
+        "p1",
+        "(resource stones 0)"
+      ]
+    },
+    {
+      "name": "character_has",
+      "mode": "Lin",
+      "terms": [
+        "c1",
+        "(resource rocks 2)"
+      ]
+    },
+    {
+      "name": "character_has",
+      "mode": "Lin",
+      "terms": [
+        "c2",
+        "(resource stones 2)"
+      ]
+    }
+  ]
+}
