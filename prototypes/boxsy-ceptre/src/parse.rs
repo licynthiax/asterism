@@ -1,58 +1,19 @@
 use nom::{branch::*, bytes::complete::*, character::complete::*, multi::*, sequence::*};
 use nom::{error::Error, IResult, Parser};
-use serde::Serialize;
-
-pub(crate) struct AnnoteString(String);
-
-impl AnnoteString {
-    pub fn new(s: &str) -> Self {
-        Self(s.to_owned())
-    }
-}
 
 pub(crate) fn parse(s: &AnnoteString) -> IResult<&str, Annote> {
-    let s = &s.0;
-    let (i, atype) = alt((ws(synthesis), ws(query), ws(data))).parse(s)?;
+    let s = s.get_str();
+    let (i, mut annote) = alt((ws(synthesis), ws(query), ws(data))).parse(s)?;
     let (i, list) = braces(list).parse(i)?;
-    let annote = Annote {
-        ty: atype,
-        logics: list.iter().map(|s| Logic::new(s)).collect(),
-    };
+    match &mut annote {
+        Annote::Query(l) => *l = list.iter().map(|s| Logic::new(s)).collect(),
+        Annote::Synthesis(l) => *l = list.iter().map(|s| Logic::new(s)).collect(),
+        Annote::Data(l) => *l = list.iter().map(|s| Logic::new(s)).collect(),
+    }
     Ok((i, annote))
 }
 
-#[derive(Serialize)]
-pub(crate) struct Logic(String);
-
-impl Logic {
-    pub fn new(s: &str) -> Self {
-        Self(s.to_owned())
-    }
-}
-
-#[derive(Serialize)]
-pub struct Annote {
-    ty: AnnoteType,
-    logics: Vec<Logic>,
-}
-
-#[derive(Serialize)]
-pub enum AnnoteType {
-    Query,
-    Synthesis,
-    Data,
-}
-
-impl std::fmt::Display for AnnoteType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            AnnoteType::Query => "AnnoteType::Query",
-            AnnoteType::Synthesis => "AnnoteType::Synthesis",
-            AnnoteType::Data => "AnnoteType::Data",
-        };
-        f.write_str(s)
-    }
-}
+use crate::json::{Annote, AnnoteString, Logic};
 
 fn ws<'a, I, F>(inner: F) -> impl Parser<&'a str, I, Error<&'a str>>
 where
@@ -68,14 +29,14 @@ where
     delimited(char('{'), ws(inner), char('}'))
 }
 
-fn synthesis(input: &str) -> IResult<&str, AnnoteType> {
-    tag_no_case("synthesis")(input).map(|(i, _)| (i, AnnoteType::Synthesis))
+fn synthesis(input: &str) -> IResult<&str, Annote> {
+    tag_no_case("synthesis")(input).map(|(i, _)| (i, Annote::Synthesis(Vec::new())))
 }
-fn query(input: &str) -> IResult<&str, AnnoteType> {
-    tag_no_case("query")(input).map(|(i, _)| (i, AnnoteType::Query))
+fn query(input: &str) -> IResult<&str, Annote> {
+    tag_no_case("query")(input).map(|(i, _)| (i, Annote::Query(Vec::new())))
 }
-fn data(input: &str) -> IResult<&str, AnnoteType> {
-    tag_no_case("data")(input).map(|(i, _)| (i, AnnoteType::Data))
+fn data(input: &str) -> IResult<&str, Annote> {
+    tag_no_case("data")(input).map(|(i, _)| (i, Annote::Data(Vec::new())))
 }
 
 fn list(input: &str) -> IResult<&str, Vec<&str>> {
