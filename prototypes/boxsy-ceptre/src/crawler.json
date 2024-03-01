@@ -70,7 +70,7 @@
             "args": []
           }
         ],
-        "annote": " synthesis { collision, resource }"
+        "annote": " synthesis { collision, resource, linking }"
       },
       {
         "name": "rsrc_id",
@@ -119,7 +119,7 @@
           "player_id",
           "room_id"
         ],
-        "annote": " query { linking, collision }"
+        "annote": " query { linking }"
       },
       {
         "name": "character_in_room",
@@ -127,7 +127,7 @@
           "ch_id",
           "room_id"
         ],
-        "annote": " query { linking, resource }"
+        "annote": " query { linking }"
       },
       {
         "name": "player_has",
@@ -151,7 +151,7 @@
           "ch_id",
           "link"
         ],
-        "annote": " data { linking, collision }"
+        "annote": " query { linking, collision }"
       },
       {
         "name": "tile_link",
@@ -159,7 +159,7 @@
           "room_id",
           "link"
         ],
-        "annote": " data { linking, collision }"
+        "annote": " query { linking, collision }"
       }
     ]
   },
@@ -207,7 +207,8 @@
                 "(exit (Var 2))"
               ]
             }
-          ]
+          ],
+          "annote": " integration { collision, linking, control }"
         },
         {
           "name": "take_char_exit",
@@ -263,7 +264,8 @@
                 "(exit (Var 3))"
               ]
             }
-          ]
+          ],
+          "annote": " integration { collision, linking, control }"
         },
         {
           "name": "take_rsrc",
@@ -335,7 +337,8 @@
                 "(Var 1)"
               ]
             }
-          ]
+          ],
+          "annote": " integration { collision, resource, control }"
         }
       ]
     }

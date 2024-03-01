@@ -1,13 +1,15 @@
-#![allow(clippy::upper_case_acronyms, non_camel_case_types)]
+#![allow(clippy::upper_case_acronyms, non_camel_case_types, unused)]
+/// types for JSON deserialization
 use std::collections::BTreeSet;
 use std::path::Path;
 
 use serde::de::{Deserializer, Visitor};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
+use crate::boxsy_info::Logic;
 use crate::Error;
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 pub struct Program {
     pub builtins: Vec<Builtin>,
     pub header: Header,
@@ -18,82 +20,98 @@ pub struct Program {
     pub init_state: Vec<Atom>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 pub struct Builtin {
-    name: String,
-    builtin: BuiltinTypes,
+    pub name: String,
+    pub builtin: BuiltinTypes,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize, Eq, PartialEq, Debug)]
 pub enum BuiltinTypes {
     NAT,
     NAT_ZERO,
     NAT_SUCC,
 }
 
-#[derive(Deserialize, Serialize)]
+impl std::fmt::Display for BuiltinTypes {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            BuiltinTypes::NAT => fmt.write_str("BuiltinTypes::NAT"),
+            BuiltinTypes::NAT_ZERO => fmt.write_str("BuiltinTypes::NAT_ZERO"),
+            BuiltinTypes::NAT_SUCC => fmt.write_str("BuiltinTypes::NAT_SUCC"),
+        }
+    }
+}
+
+#[derive(Deserialize)]
 pub struct Header {
     pub types: Vec<Type>,
     pub preds: Vec<Predicate>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Clone)]
 pub struct Type {
-    name: String,
-    tp: Vec<Tp>,
+    pub name: String,
+    pub tp: Vec<Tp>,
     pub annote: Option<Annote>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Clone)]
 pub struct Tp {
-    name: String,
-    args: Vec<String>,
+    pub name: String,
+    pub args: Vec<String>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Predicate {
-    name: String,
-    terms: Vec<Term>,
-    annote: Option<Annote>,
+    pub name: String,
+    pub terms: Vec<Term>,
+    pub annote: Option<Annote>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Eq, PartialEq, Ord, PartialOrd, Debug)]
 pub struct Term(String);
+impl Term {
+    fn str(&self) -> &str {
+        self.0.as_str()
+    }
+}
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 /// this struct purposefully left blank
 pub struct BwdRule {}
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 pub struct Stage {
     name: String,
     nondet: Nondet,
-    body: Vec<Rule>,
+    pub body: Vec<Rule>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 pub enum Nondet {
     Random,
     Interactive,
     Ordered,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 pub struct Rule {
-    name: String,
+    pub name: String,
     pivars: u32,
-    lhs: Vec<Atom>,
-    rhs: Vec<Atom>,
+    pub lhs: Vec<Atom>,
+    pub rhs: Vec<Atom>,
+    pub annote: Option<Annote>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 pub struct Atom {
-    name: String,
+    pub name: String,
     mode: Mode,
-    terms: Vec<Term>,
+    pub terms: Vec<Term>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 pub enum Mode {
     Pers,
     Lin,
@@ -101,23 +119,36 @@ pub enum Mode {
 
 pub struct AnnoteString(String);
 
-#[derive(Serialize)]
-pub struct Logic(String);
-
-impl Logic {
-    pub(crate) fn new(s: &str) -> Self {
-        Self(s.to_owned())
-    }
-    pub(crate) fn string(&self) -> &str {
-        &self.0
-    }
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Debug)]
+pub enum Annote {
+    /// syntheses describe _structural syntheses_-- _which_ logics a type is associated with.
+    Synthesis(BTreeSet<Logic>),
+    /// data mark different instantiations of syntheses
+    Data(BTreeSet<Logic>),
+    /// queries check relationships between logics-- while syntheses define what those
+    /// relationships _are_, queries maintain them at runtime.
+    Query(BTreeSet<Logic>),
+    /// integrations mark the ways one logic might change in reaction to another
+    Integration(BTreeSet<Logic>),
 }
 
-#[derive(Serialize)]
-pub enum Annote {
-    Query(Vec<Logic>),
-    Synthesis(Vec<Logic>),
-    Data(Vec<Logic>),
+impl Annote {
+    pub fn get_logics_mut(&mut self) -> &mut BTreeSet<Logic> {
+        match self {
+            Annote::Integration(l) => l,
+            Annote::Synthesis(l) => l,
+            Annote::Query(l) => l,
+            Annote::Data(l) => l,
+        }
+    }
+    pub fn get_logics(&self) -> &BTreeSet<Logic> {
+        match self {
+            Annote::Integration(l) => l,
+            Annote::Synthesis(l) => l,
+            Annote::Query(l) => l,
+            Annote::Data(l) => l,
+        }
+    }
 }
 
 impl From<String> for AnnoteString {
@@ -126,7 +157,7 @@ impl From<String> for AnnoteString {
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 pub struct StageRule {
     name: String,
     pivars: u32,
@@ -194,7 +225,7 @@ impl<'de> Deserialize<'de> for Annote {
                 let a = crate::parse::parse(&a_s);
                 match a {
                     Ok((_, annote)) => Ok(annote),
-                    Err(e) => Err(serde::de::Error::custom(e)),
+                    Err(e) => Err(serde::de::Error::custom(Error::Parse(e))),
                 }
             }
         }
