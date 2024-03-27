@@ -20,13 +20,13 @@ pub struct Program {
     pub init_state: Vec<Atom>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct Builtin {
     pub name: String,
     pub builtin: BuiltinTypes,
 }
 
-#[derive(Deserialize, Eq, PartialEq, Debug)]
+#[derive(Deserialize, Eq, PartialEq, Debug, Clone, Copy)]
 pub enum BuiltinTypes {
     NAT,
     NAT_ZERO,
@@ -62,17 +62,17 @@ pub struct Tp {
     pub args: Vec<String>,
 }
 
-#[derive(Deserialize, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Deserialize, Ord, PartialOrd, Eq, PartialEq, Clone, Debug)]
 pub struct Predicate {
     pub name: String,
     pub terms: Vec<Term>,
     pub annote: Option<Annote>,
 }
 
-#[derive(Deserialize, Eq, PartialEq, Ord, PartialOrd, Debug)]
+#[derive(Deserialize, Eq, PartialEq, Ord, PartialOrd, Debug, Clone)]
 pub struct Term(String);
 impl Term {
-    fn str(&self) -> &str {
+    pub fn str(&self) -> &str {
         self.0.as_str()
     }
 }
@@ -88,14 +88,14 @@ pub struct Stage {
     pub body: Vec<Rule>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Copy, Clone)]
 pub enum Nondet {
     Random,
     Interactive,
     Ordered,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct Rule {
     pub name: String,
     pivars: u32,
@@ -104,14 +104,14 @@ pub struct Rule {
     pub annote: Option<Annote>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct Atom {
     pub name: String,
     mode: Mode,
     pub terms: Vec<Term>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Copy, Clone, Debug)]
 pub enum Mode {
     Pers,
     Lin,

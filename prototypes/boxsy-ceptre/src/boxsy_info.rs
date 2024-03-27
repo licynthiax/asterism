@@ -26,11 +26,11 @@ impl std::fmt::Display for GameType {
 impl GameType {
     pub fn associated_logics(&self) -> BTreeSet<Logic> {
         match self {
-            GameType::Character => {
-                BTreeSet::from([Logic::Collision, Logic::Control, Logic::Resource])
-            }
+            GameType::Player => BTreeSet::from([Logic::Collision, Logic::Control, Logic::Resource]),
             GameType::Tile => BTreeSet::from([Logic::Collision, Logic::Linking]),
-            GameType::Player => BTreeSet::from([Logic::Collision, Logic::Resource, Logic::Linking]),
+            GameType::Character => {
+                BTreeSet::from([Logic::Collision, Logic::Resource, Logic::Linking])
+            }
             GameType::Rsrc => BTreeSet::from([Logic::Resource]),
             GameType::Room => BTreeSet::from([Logic::Linking]),
         }
@@ -45,7 +45,7 @@ pub enum Logic {
     Resource,
 }
 
-/* pub enum Event {
+pub enum Event {
     ChangeResource,
     MoveRoom,
 }
@@ -61,7 +61,7 @@ impl Event {
             }
         }
     }
-} */
+}
 
 impl<'a> TryFrom<&'a str> for Logic {
     type Error = &'a str;

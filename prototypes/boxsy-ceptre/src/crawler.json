@@ -151,7 +151,7 @@
           "ch_id",
           "link"
         ],
-        "annote": " query { linking, collision }"
+        "annote": " data { linking, collision }"
       },
       {
         "name": "tile_link",
@@ -159,7 +159,7 @@
           "room_id",
           "link"
         ],
-        "annote": " query { linking, collision }"
+        "annote": " data { linking, collision }"
       }
     ]
   },
