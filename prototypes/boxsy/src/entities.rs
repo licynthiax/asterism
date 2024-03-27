@@ -3,11 +3,11 @@ use asterism::resources::PoolValues;
 
 impl Game {
     pub fn set_background(&mut self, color: Color) {
-        self.colors.background_color = color;
+        self.draw.background_color = color;
     }
 
     pub fn set_player(&mut self, player: Player) {
-        self.colors.colors.insert(EntID::Player, player.color);
+        self.draw.colors.insert(EntID::Player, player.color);
         self.logics.consume_player(player);
 
         if !self.state.player {
@@ -42,7 +42,7 @@ impl Game {
 
         self.state.rooms[room].chars.push((id, character.pos));
 
-        self.colors
+        self.draw
             .colors
             .insert(EntID::Character(id), character.color);
 
@@ -160,7 +160,7 @@ impl Game {
     pub fn log_tile_info(&mut self, tile: Tile) -> TileID {
         let id = TileID::new(self.state.tile_type_count);
         self.state.tile_type_count += 1;
-        self.colors.colors.insert(EntID::Tile(id), tile.color);
+        self.draw.colors.insert(EntID::Tile(id), tile.color);
 
         self.logics.collision.tile_solid.insert(id, tile.solid);
 

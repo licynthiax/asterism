@@ -65,7 +65,7 @@ pub struct Game {
     pub state: State,
     pub logics: Logics,
     events: Events,
-    pub colors: Colors,
+    pub draw: Draw,
 }
 
 impl Game {
@@ -74,7 +74,8 @@ impl Game {
             state: State::new(),
             logics: Logics::new(),
             events: Events::new(),
-            colors: Colors {
+            draw: Draw {
+                draw_timer: Vec::new(),
                 background_color: DARKBLUE,
                 colors: BTreeMap::new(),
             },
@@ -86,9 +87,10 @@ impl Game {
     }
 }
 
-pub struct Colors {
-    pub background_color: Color,
-    pub colors: BTreeMap<EntID, Color>,
+pub struct Draw {
+    draw_timer: Vec<(Box<dyn Fn()>, usize)>,
+    background_color: Color,
+    colors: BTreeMap<EntID, Color>,
 }
 
 #[derive(Default)]
@@ -328,7 +330,7 @@ fn linking(game: &mut Game) {
 }
 
 fn draw(game: &mut Game) {
-    clear_background(game.colors.background_color);
+    clear_background(game.draw.background_color);
     let current_room = game.get_current_room();
 
     let mut col_data = game.logics.collision.data_iter();
@@ -337,7 +339,7 @@ fn draw(game: &mut Game) {
         match (id, col_data) {
             (ColIdent::Position(pos), TileMapColData::Position { id: tile, .. }) => {
                 let color = game
-                    .colors
+                    .draw
                     .colors
                     .get(&EntID::Tile(*tile))
                     .unwrap_or_else(|| panic!("tile {} color undefined", tile.idx()));
@@ -352,7 +354,7 @@ fn draw(game: &mut Game) {
             (ColIdent::EntIdx(idx), TileMapColData::Ent { pos, id: ent, .. }) => match ent {
                 ColEntType::Player => {
                     let color = game
-                        .colors
+                        .draw
                         .colors
                         .get(&EntID::Player)
                         .expect("player color not set");
@@ -367,7 +369,7 @@ fn draw(game: &mut Game) {
                 ColEntType::Character => {
                     let character = game.state.rooms[current_room].chars[idx - 1].0;
                     let color = game
-                        .colors
+                        .draw
                         .colors
                         .get(&EntID::Character(character))
                         .unwrap_or_else(|| panic!("character {} color defined", character.idx()));
@@ -388,29 +390,51 @@ fn draw(game: &mut Game) {
         pool, transaction, ..
     } in game.logics.resources.events()
     {
-        if let Transaction::Change(amt) = transaction {
+        if let Transaction::Change(_) = transaction {
             if pool.attached_to == EntID::Player {
-                /* if let TileMapColData::Ent { pos, .. } =
+                if let TileMapColData::Ent { pos, .. } =
                     game.logics.collision.get_ident_data(ColIdent::EntIdx(0))
                 {
+                    let name = pool.rsrc.name().clone();
+                    let x = pos.x;
+                    let y = pos.y;
+                    game.draw.draw_timer.push((
+                        Box::new(move || {
+                            draw_text(
+                                &format! {"{} get!", name},
+                                x as f32 * TILE_SIZE as f32,
+                                y as f32 * TILE_SIZE as f32,
+                                (TILE_SIZE / 2) as f32,
+                                WHITE,
+                            )
+                        }),
+                        120,
+                    ));
+                }
 
-                    draw_text(
-                        &message,
-                        pos.x as f32 * TILE_SIZE as f32,
-                        pos.y as f32 * TILE_SIZE as f32,
-                        (TILE_SIZE / 2) as f32,
-                        WHITE,
-                    );
-                } */
-
-                #[allow(clippy::comparison_chain)]
+                /* #[allow(clippy::comparison_chain)]
                 if *amt > 0 {
                     println!("{} get!", pool.rsrc.name());
                 } else if *amt < 0 {
                     println!("{} lost :(", pool.rsrc.name());
-                }
+                } */
             }
         }
+    }
+
+    let mut i = 0;
+    while i < game.draw.draw_timer.len() {
+        let (_, timer) = game.draw.draw_timer[i];
+        if timer == 0 {
+            let _ = game.draw.draw_timer.remove(i);
+        } else {
+            i += 1;
+        }
+    }
+
+    for (event, timer) in game.draw.draw_timer.iter_mut() {
+        *timer -= 1;
+        event();
     }
 }
 

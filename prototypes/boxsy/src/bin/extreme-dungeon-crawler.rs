@@ -92,7 +92,7 @@ r#"00000000
         ),
     );
 
-    game.add_link((0, CollisionEnt::Character(char_id)), (1, IVec2::new(1, 1)));
+    // game.add_link((0, CollisionEnt::Character(char_id)), (1, IVec2::new(1, 1)));
 
     // not an actual tile (won't do anything)
     game.add_link(
