@@ -8,6 +8,7 @@ edition = "2018"
 [dependencies]
 macroquad = "0.4.4"
 futures = "0.3.17"
+num-traits = "0.2.18"
 
 # Bevy takes a long time to build and we're not actively using it
 bevy_input = { version = "0.4.0", optional = true }

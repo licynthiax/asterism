@@ -109,14 +109,14 @@ impl Wall {
 
 #[derive(Copy, Clone)]
 pub struct Score {
-    pub value: u16,
+    pub value: i16,
     pub position: Vec2,
 }
 
 impl Score {
-    pub(crate) const MIN: u16 = 0;
-    pub(crate) const MAX: u16 = u16::MAX;
-    pub fn new(value: u16, position: Vec2) -> Self {
+    pub(crate) const MIN: i16 = 0;
+    pub(crate) const MAX: i16 = i16::MAX;
+    pub fn new(value: i16, position: Vec2) -> Self {
         Self { value, position }
     }
 }
@@ -127,7 +127,7 @@ pub type CtrlEvent = ControlEvent<ActionID>;
 pub type CtrlIdent<'a> = (usize, &'a [asterism::control::Action<ActionID, KeyCode>]);
 pub type ColEvent = asterism::collision::Contact;
 pub type ColIdent<'a> = (usize, asterism::collision::AabbColData<'a, CollisionEnt>);
-pub type RsrcIdent = (RsrcPool, (u16, u16, u16));
-pub type RsrcEvent = asterism::resources::ResourceEvent<RsrcPool, u16>;
+pub type RsrcIdent = (RsrcPool, (i16, i16, i16));
+pub type RsrcEvent = asterism::resources::ResourceEvent<RsrcPool, i16>;
 pub type PhysIdent<'a> = (usize, asterism::physics::PointPhysData<'a>);
 pub type PhysEvent = asterism::physics::PhysicsEvent;

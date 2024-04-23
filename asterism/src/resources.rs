@@ -3,9 +3,9 @@
 //! Resource logics communicate that generic or specific resources can be created, destroyed, converted, or transferred between abstract or concrete locations. They create, destroy, and exchange (usually) discrete quantities of generic or specific resources in or between abstract or concrete locations on demand or over time, and trigger other actions when these transactions take place.
 
 use crate::{Event, EventType, LendingIterator, Logic, Reaction};
+use num_traits::{Num, Signed};
 use std::collections::BTreeMap;
 use std::fmt::Debug;
-use std::ops::{Add, AddAssign};
 
 pub struct PoolValues<Value> {
     pub val: Value,
@@ -16,13 +16,13 @@ pub struct PoolValues<Value> {
 /// A resource logic that queues transactions, then applies them all at once when updating.
 pub struct QueuedResources<ID, Value>
 where
-    ID: Copy + Ord + Debug + 'static,
-    Value: Add<Output = Value> + AddAssign + Ord + Copy + 'static,
+    ID: Copy + Ord + Debug,
+    Value: Num + Signed + Copy + PartialOrd,
 {
     /// The items involved, and their values, as a tuple of (actual value, minimum value, maximum value).
     pub items: BTreeMap<ID, PoolValues<Value>>,
     /// Each transaction is a list of items involved in the transaction and the amount they're being changed.
-    pub transactions: Vec<(ID, Transaction<Value>)>,
+    pub transactions: Vec<(ID, Transaction<Value, ID>)>,
     /// A Vec of all transactions and if they were able to be completed or not. If not, also report an error (see [ResourceEvent] and [ResourceError]).
     pub completed: Vec<ResourceEvent<ID, Value>>,
 }
@@ -30,15 +30,15 @@ where
 impl<ID, Value> Logic for QueuedResources<ID, Value>
 where
     ID: Copy + Ord + Debug,
-    Value: Add<Output = Value> + AddAssign + Ord + Copy,
+    Value: Num + Signed + Copy + PartialOrd,
 {
     type Event = ResourceEvent<ID, Value>;
     type Reaction = ResourceReaction<ID, Value>;
 
     type Ident = ID;
-    type IdentData<'a> = &'a mut PoolValues<Value> where Self: 'a;
+    type IdentData<'rsrc> = &'rsrc mut PoolValues<Value> where Self: 'rsrc;
 
-    type DataIter<'a> = RsrcDataIter<'a, ID, Value> where Self: 'a;
+    type DataIter<'iter> = RsrcDataIter<'iter, ID, Value> where Self: 'iter;
 
     fn handle_predicate(&mut self, reaction: &Self::Reaction) {
         self.transactions.push(*reaction);
@@ -64,7 +64,7 @@ where
 impl<ID, Value> QueuedResources<ID, Value>
 where
     ID: Copy + Ord + Debug,
-    Value: Add<Output = Value> + AddAssign + Ord + Copy,
+    Value: Num + Signed + Copy + PartialOrd,
 {
     pub fn new() -> Self {
         Self {
@@ -79,22 +79,43 @@ where
         self.completed.clear();
 
         for (id, transaction) in self.transactions.iter() {
+            let err_event = |pool, transaction, err| ResourceEvent {
+                pool,
+                transaction,
+                event_type: ResourceEventType::TransactionUnsuccessful(err),
+            };
+            if let Transaction::Trade(amt, other) = transaction {
+                let zero: Value = num_traits::identities::zero();
+                // check if first transaction is possible
+                if let Err(err) = self.is_possible(id, &Transaction::Change(zero - *amt)) {
+                    self.completed.push(err_event(*id, *transaction, err));
+                    continue;
+                }
+                // check if second is possible
+                if let Err(err) = self.is_possible(other, &Transaction::Change(*amt)) {
+                    self.completed.push(err_event(*id, *transaction, err));
+                    continue;
+                }
+
+                let PoolValues { val: val_i, .. } = self.items.get_mut(id).unwrap();
+                *val_i = *val_i - *amt;
+                let PoolValues { val: val_j, .. } = self.items.get_mut(other).unwrap();
+                *val_j = *val_j + *amt;
+                continue;
+            }
+
             if let Err(err) = self.is_possible(id, transaction) {
-                self.completed.push(ResourceEvent {
-                    pool: *id,
-                    transaction: *transaction,
-                    event_type: ResourceEventType::TransactionUnsuccessful(err),
-                });
+                self.completed.push(err_event(*id, *transaction, err));
                 continue;
             }
 
             let PoolValues { val, min, max } = self.items.get_mut(id).unwrap();
             match transaction {
                 Transaction::Change(amt) => {
-                    *val += *amt;
+                    *val = *val + *amt;
                 }
                 Transaction::Set(amt) => {
-                    *val = *amt;
+                    *val = *val + *amt;
                 }
                 Transaction::SetMax(new_max) => {
                     *max = *new_max;
@@ -102,6 +123,7 @@ where
                 Transaction::SetMin(new_min) => {
                     *min = *new_min;
                 }
+                _ => {}
             }
             self.completed.push(ResourceEvent {
                 pool: *id,
@@ -116,7 +138,7 @@ where
     fn is_possible(
         &self,
         item_type: &ID,
-        transaction: &Transaction<Value>,
+        transaction: &Transaction<Value, ID>,
     ) -> Result<(), ResourceError> {
         if let Some(PoolValues { val, min, max }) = self.items.get(item_type) {
             match transaction {
@@ -144,10 +166,12 @@ where
 
 /// A transaction holding the amount the value should change by.
 #[derive(Clone, Copy, Eq, PartialEq)]
-pub enum Transaction<Value>
+pub enum Transaction<Value, Ident>
 where
-    Value: Add + AddAssign,
+    Value: Num + Signed + Copy + PartialOrd,
+    Ident: Copy + Ord + Debug,
 {
+    Trade(Value, Ident),
     Change(Value),
     Set(Value),
     SetMax(Value),
@@ -162,15 +186,16 @@ pub enum ResourceError {
     TooSmall,
 }
 
-pub type ResourceReaction<ID, Value> = (ID, Transaction<Value>);
+pub type ResourceReaction<ID, Value> = (ID, Transaction<Value, ID>);
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct ResourceEvent<ID, Value>
 where
-    Value: Eq + Add + AddAssign,
+    Value: Num + Signed + Copy + PartialOrd,
+    ID: Copy + Ord + Debug,
 {
     pub pool: ID,
-    pub transaction: Transaction<Value>,
+    pub transaction: Transaction<Value, ID>,
     pub event_type: ResourceEventType,
 }
 
@@ -182,27 +207,36 @@ pub enum ResourceEventType {
 
 impl EventType for ResourceEventType {}
 
-impl<ID: Ord, Value: Add + AddAssign> Reaction for ResourceReaction<ID, Value> {}
+impl<ID, Value> Reaction for ResourceReaction<ID, Value>
+where
+    ID: Ord + Copy + Debug,
+    Value: Num + Signed + Copy + PartialOrd,
+{
+}
 
-impl<ID: Ord, Value: Add + AddAssign + Eq> Event for ResourceEvent<ID, Value> {
+impl<ID, Value> Event for ResourceEvent<ID, Value>
+where
+    ID: Ord + Copy + Debug,
+    Value: Num + Signed + Copy + PartialOrd,
+{
     type EventType = ResourceEventType;
     fn get_type(&self) -> &Self::EventType {
         &self.event_type
     }
 }
 
-pub struct RsrcDataIter<'rsrc, ID, Value>
+pub struct RsrcDataIter<'iter, ID, Value>
 where
-    ID: Copy + Ord + Debug + 'static,
-    Value: Add<Output = Value> + AddAssign + Ord + Copy + 'static,
+    ID: Copy + Ord + Debug,
+    Value: Num + Signed,
 {
-    resources: std::collections::btree_map::IterMut<'rsrc, ID, PoolValues<Value>>,
+    resources: std::collections::btree_map::IterMut<'iter, ID, PoolValues<Value>>,
 }
 
-impl<'rsrc, ID, Value> LendingIterator for RsrcDataIter<'rsrc, ID, Value>
+impl<'iter, ID, Value> LendingIterator for RsrcDataIter<'iter, ID, Value>
 where
-    ID: Copy + Ord + Debug + 'static,
-    Value: Add<Output = Value> + AddAssign + Ord + Copy + 'static,
+    ID: Copy + Ord + Debug,
+    Value: Num + Signed + Copy + PartialOrd,
 {
     type Item<'a> = (
         <QueuedResources<ID, Value> as Logic>::Ident,
@@ -218,7 +252,7 @@ where
 pub struct InstantResources<ID, Value>
 where
     ID: Copy + Ord + Debug,
-    Value: Add<Output = Value> + AddAssign + Ord + Copy,
+    Value: Num + Signed + Copy + PartialOrd,
 {
     /// The items involved and their values.
     pub items: BTreeMap<ID, PoolValues<Value>>,
@@ -229,7 +263,7 @@ where
 impl<ID, Value> InstantResources<ID, Value>
 where
     ID: Copy + Ord + Debug,
-    Value: Add<Output = Value> + AddAssign + Ord + Copy,
+    Value: Num + Signed + PartialOrd + Copy + PartialOrd,
 {
     pub fn new() -> Self {
         Self {
@@ -247,7 +281,7 @@ where
     fn is_possible(
         &self,
         item_type: &ID,
-        transaction: &Transaction<Value>,
+        transaction: &Transaction<Value, ID>,
     ) -> Result<(), ResourceError> {
         if let Some(PoolValues { val, min, max }) = self.items.get(item_type) {
             match transaction {
@@ -275,8 +309,8 @@ where
 
 impl<ID, Value> Logic for InstantResources<ID, Value>
 where
-    ID: Copy + Ord + Debug + 'static,
-    Value: Add<Output = Value> + AddAssign + Ord + Copy + 'static,
+    ID: Copy + Ord + Debug,
+    Value: Num + Signed + Copy + PartialOrd,
 {
     type Event = ResourceEvent<ID, Value>;
     type Reaction = ResourceReaction<ID, Value>;
@@ -301,7 +335,7 @@ where
         let PoolValues { val, min, max } = self.items.get_mut(item_type).unwrap();
         match change {
             Transaction::Change(amt) => {
-                *val += *amt;
+                *val = *val + *amt;
             }
             Transaction::Set(amt) => {
                 *val = *amt;
@@ -312,6 +346,7 @@ where
             Transaction::SetMin(new_min) => {
                 *min = *new_min;
             }
+            Transaction::Trade(_, _) => {}
         }
         self.completed.push(ResourceEvent {
             pool: *item_type,
@@ -338,18 +373,18 @@ where
     }
 }
 
-pub struct InstRsrcDataIter<'rsrc, ID, Value>
+pub struct InstRsrcDataIter<'iter, ID, Value>
 where
-    ID: Copy + Ord + Debug + 'static,
-    Value: Add<Output = Value> + AddAssign + Ord + Copy + 'static,
+    ID: Copy + Ord + Debug,
+    Value: Num + Signed,
 {
-    resources: std::collections::btree_map::IterMut<'rsrc, ID, PoolValues<Value>>,
+    resources: std::collections::btree_map::IterMut<'iter, ID, PoolValues<Value>>,
 }
 
-impl<'rsrc, ID, Value> LendingIterator for InstRsrcDataIter<'rsrc, ID, Value>
+impl<'iter, ID, Value> LendingIterator for InstRsrcDataIter<'iter, ID, Value>
 where
-    ID: Copy + Ord + Debug + 'static,
-    Value: Add<Output = Value> + AddAssign + Ord + Copy + 'static,
+    ID: Copy + Ord + Debug,
+    Value: Num + Signed + Copy + PartialOrd,
 {
     type Item<'a> = (
         <InstantResources<ID, Value> as Logic>::Ident,

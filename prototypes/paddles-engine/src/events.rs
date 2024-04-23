@@ -35,7 +35,7 @@ impl std::fmt::Debug for EntityMatch {
 pub enum EngineRsrcEvent {
     ScoreIncreased(ScoreID),
     ScoreReset(ScoreID),
-    ScoreEquals(ScoreID, u16),
+    ScoreEquals(ScoreID, i16),
 }
 
 #[derive(Debug)]
@@ -48,8 +48,8 @@ pub enum EngineAction {
     MovePaddleBy(PaddleID, Vec2),
     SetKeyValid(PaddleID, ActionID),
     SetKeyInvalid(PaddleID, ActionID),
-    ChangeScoreBy(ScoreID, u16),
-    ChangeScore(ScoreID, u16),
+    ChangeScoreBy(ScoreID, i16),
+    ChangeScore(ScoreID, i16),
     RemoveEntity(Option<EntityMatch>),
     AddEntity(Ent),
 }

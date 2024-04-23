@@ -27,7 +27,7 @@ pub use types::*;
 pub struct Logics {
     pub collision: AabbCollision<CollisionEnt>,
     pub physics: PointPhysics,
-    pub resources: QueuedResources<RsrcPool, u16>,
+    pub resources: QueuedResources<RsrcPool, i16>,
     pub control: KeyboardControl<ActionID, MacroquadInputWrapper>,
 }
 
