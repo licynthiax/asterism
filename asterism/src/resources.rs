@@ -101,6 +101,11 @@ where
                 *val_i = *val_i - *amt;
                 let PoolValues { val: val_j, .. } = self.items.get_mut(other).unwrap();
                 *val_j = *val_j + *amt;
+                self.completed.push(ResourceEvent {
+                    pool: *id,
+                    transaction: *transaction,
+                    event_type: ResourceEventType::PoolUpdated,
+                });
                 continue;
             }
 
@@ -322,13 +327,39 @@ where
 
     fn handle_predicate(&mut self, reaction: &Self::Reaction) {
         let (item_type, change) = reaction;
+        let err_event = |pool, transaction, err| ResourceEvent {
+            pool,
+            transaction,
+            event_type: ResourceEventType::TransactionUnsuccessful(err),
+        };
 
-        if let Err(err) = self.is_possible(item_type, change) {
+        if let Transaction::Trade(amt, to) = change {
+            let zero: Value = num_traits::identities::zero();
+            // check if first transaction is possible
+            if let Err(err) = self.is_possible(item_type, &Transaction::Change(zero - *amt)) {
+                self.completed.push(err_event(*item_type, *change, err));
+                return;
+            }
+            // check if second is possible
+            if let Err(err) = self.is_possible(to, &Transaction::Change(*amt)) {
+                self.completed.push(err_event(*item_type, *change, err));
+                return;
+            }
+
+            let PoolValues { val: val_i, .. } = self.items.get_mut(item_type).unwrap();
+            *val_i = *val_i - *amt;
+            let PoolValues { val: val_j, .. } = self.items.get_mut(to).unwrap();
+            *val_j = *val_j + *amt;
             self.completed.push(ResourceEvent {
                 pool: *item_type,
                 transaction: *change,
-                event_type: ResourceEventType::TransactionUnsuccessful(err),
+                event_type: ResourceEventType::PoolUpdated,
             });
+            return;
+        }
+
+        if let Err(err) = self.is_possible(item_type, change) {
+            self.completed.push(err_event(*item_type, *change, err));
             return;
         }
 

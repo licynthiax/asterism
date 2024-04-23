@@ -4,7 +4,7 @@ use crate::*;
 
 pub enum EngineAction {
     /// change resource
-    ChangeResource(PoolID, Transaction<i16>),
+    ChangeResource(PoolID, Transaction<i16, PoolID>),
     MoveTile(IVec2, IVec2),
     MoveCharacter(Option<CharacterID>, IVec2),
     /// move room-- original room, and position

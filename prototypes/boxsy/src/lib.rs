@@ -365,6 +365,13 @@ fn draw(game: &mut Game) {
                         TILE_SIZE as f32,
                         *color,
                     );
+                    draw_text(
+                        "P",
+                        pos.x as f32 * TILE_SIZE as f32 + 4.0,
+                        (pos.y as f32 + 1.0) * TILE_SIZE as f32 - 4.0,
+                        TILE_SIZE as f32,
+                        WHITE,
+                    );
                 }
                 ColEntType::Character => {
                     let character = game.state.rooms[current_room].chars[idx - 1].0;
@@ -380,6 +387,13 @@ fn draw(game: &mut Game) {
                         TILE_SIZE as f32,
                         *color,
                     );
+                    draw_text(
+                        "C",
+                        pos.x as f32 * TILE_SIZE as f32 + 4.0,
+                        (pos.y as f32 + 1.0) * TILE_SIZE as f32 - 4.0,
+                        TILE_SIZE as f32,
+                        WHITE,
+                    );
                 }
             },
             _ => unreachable!(),
@@ -387,37 +401,47 @@ fn draw(game: &mut Game) {
     }
 
     for RsrcEvent {
-        pool, transaction, ..
+        pool,
+        transaction,
+        event_type,
     } in game.logics.resources.events()
     {
-        if let Transaction::Change(_) = transaction {
-            if pool.attached_to == EntID::Player {
-                if let TileMapColData::Ent { pos, .. } =
-                    game.logics.collision.get_ident_data(ColIdent::EntIdx(0))
-                {
-                    let name = pool.rsrc.name().clone();
-                    let x = pos.x;
-                    let y = pos.y;
-                    game.draw.draw_timer.push((
-                        Box::new(move || {
-                            draw_text(
-                                &format! {"{} get!", name},
-                                x as f32 * TILE_SIZE as f32,
-                                y as f32 * TILE_SIZE as f32,
-                                (TILE_SIZE / 2) as f32,
-                                WHITE,
-                            )
-                        }),
-                        120,
-                    ));
+        let timer = |x, y, name| {
+            Box::new(move || {
+                draw_text(
+                    &format! {"{} get!", name},
+                    x as f32 * TILE_SIZE as f32,
+                    y as f32 * TILE_SIZE as f32,
+                    (TILE_SIZE / 2) as f32,
+                    WHITE,
+                )
+            })
+        };
+        if *event_type == ResourceEventType::PoolUpdated {
+            match transaction {
+                Transaction::Change(_) => {
+                    if pool.attached_to == EntID::Player {
+                        if let TileMapColData::Ent { pos, .. } =
+                            game.logics.collision.get_ident_data(ColIdent::EntIdx(0))
+                        {
+                            game.draw
+                                .draw_timer
+                                .push((timer(pos.x, pos.y, pool.rsrc.name()), 120));
+                        }
+                    }
                 }
-
-                /* #[allow(clippy::comparison_chain)]
-                if *amt > 0 {
-                    println!("{} get!", pool.rsrc.name());
-                } else if *amt < 0 {
-                    println!("{} lost :(", pool.rsrc.name());
-                } */
+                Transaction::Trade(_, other) => {
+                    if pool.attached_to == EntID::Player || other.attached_to == EntID::Player {
+                        if let TileMapColData::Ent { pos, .. } =
+                            game.logics.collision.get_ident_data(ColIdent::EntIdx(0))
+                        {
+                            game.draw
+                                .draw_timer
+                                .push((timer(pos.x, pos.y, pool.rsrc.name()), 120));
+                        }
+                    }
+                }
+                _ => {}
             }
         }
     }

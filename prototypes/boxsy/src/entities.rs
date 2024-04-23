@@ -34,7 +34,7 @@ impl Game {
                 PoolID::new(EntID::Character(id), *rsrc_id),
                 asterism::resources::PoolValues {
                     val: *val,
-                    min: i16::MIN,
+                    min: 0,
                     max: i16::MAX,
                 },
             );

@@ -36,13 +36,14 @@ fn init(game: &mut Game) {
     game.log_tile_info(Tile::new());
 
     #[rustfmt::skip]
-    let maps = [r#"00000000
+    let maps = [
+r#"00000000
 0      0
 0   2  0
 0      0
 0      0
-0  3   0
 0      0
+0    3 0
 00000000"#,
 
 r#"00000000
@@ -50,7 +51,7 @@ r#"00000000
 0      0
 0   1  0
 0      0
-0      0
+0 2    0
 0      0
 00000000"#,
 
@@ -80,29 +81,18 @@ r#"00000000
     game.add_collision_predicate(
         (0, Contact::Ent(0, char_id.idx() + 1)),
         EngineAction::ChangeResource(
-            PoolID::new(EntID::Player, player_rocks),
-            Transaction::Change(1),
-        ),
-    );
-    game.add_collision_predicate(
-        (0, Contact::Ent(0, char_id.idx() + 1)),
-        EngineAction::ChangeResource(
             PoolID::new(EntID::Character(char_id), char_rocks),
-            Transaction::Change(-1),
+            Transaction::Trade(1, PoolID::new(EntID::Player, player_rocks)),
         ),
     );
-
-    // game.add_link((0, CollisionEnt::Character(char_id)), (1, IVec2::new(1, 1)));
-
-    // not an actual tile (won't do anything)
+    game.add_link((0, CollisionEnt::Character(char_id)), (2, IVec2::new(3, 2)));
     game.add_link(
-        (1, CollisionEnt::Tile(IVec2::new(2, 3))),
-        (0, IVec2::new(1, 3)),
+        (0, CollisionEnt::Tile(IVec2::new(4, 2))),
+        (1, IVec2::new(3, 1)),
     );
-
     game.add_link(
         (1, CollisionEnt::Tile(IVec2::new(4, 3))),
-        (2, IVec2::new(3, 1)),
+        (0, IVec2::new(3, 1)),
     );
     game.add_link(
         (2, CollisionEnt::Tile(IVec2::new(3, 5))),
