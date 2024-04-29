@@ -25,15 +25,11 @@ fn init(game: &mut Game) {
     tile.solid = true;
     game.log_tile_info(tile);
 
-    let mut tile = Tile::new();
-    tile.solid = true;
-    game.log_tile_info(tile);
-
-    let mut tile = Tile::new();
-    tile.solid = true;
-    game.log_tile_info(tile);
-
     game.log_tile_info(Tile::new());
+
+    let mut tile = Tile::new();
+    tile.solid = true;
+    game.log_tile_info(tile);
 
     #[rustfmt::skip]
     let maps = [
@@ -43,7 +39,7 @@ r#"00000000
 0      0
 0      0
 0      0
-0    3 0
+0    1 0
 00000000"#,
 
 r#"00000000
@@ -60,7 +56,7 @@ r#"00000000
 0      0
 0      0
 0      0
-0  3   0
+0  1   0
 0      0
 00000000"#
     ];
@@ -87,7 +83,7 @@ r#"00000000
     );
     game.add_link((0, CollisionEnt::Character(char_id)), (2, IVec2::new(3, 2)));
     game.add_link(
-        (0, CollisionEnt::Tile(IVec2::new(4, 2))),
+        (0, CollisionEnt::Tile(IVec2::new(5, 6))),
         (1, IVec2::new(3, 1)),
     );
     game.add_link(
