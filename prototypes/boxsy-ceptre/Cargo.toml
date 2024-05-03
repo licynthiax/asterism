@@ -12,3 +12,4 @@ serde_json = "1.0"
 serde = { version = "1.0.196", features = ["derive"] }
 asterism = { path = "../../asterism" }
 boxsy = { path = "../boxsy" }
+macroquad = "0.4.4"

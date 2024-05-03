@@ -2,12 +2,12 @@
 /// types that describe the boxsy game and functions for facilitating working with them
 use std::collections::BTreeSet;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum GameType {
     Character,
-    Tile,
     Player,
     Rsrc,
+    Link,
     Room,
 }
 
@@ -15,9 +15,9 @@ impl std::fmt::Display for GameType {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
             GameType::Character => fmt.write_str("GameType::Character"),
-            GameType::Tile => fmt.write_str("GameType::Tile"),
             GameType::Player => fmt.write_str("GameType::Player"),
             GameType::Rsrc => fmt.write_str("GameType::Rsrc"),
+            GameType::Link => fmt.write_str("GameType::Link"),
             GameType::Room => fmt.write_str("GameType::Room"),
         }
     }
@@ -27,11 +27,11 @@ impl GameType {
     pub fn associated_logics(&self) -> BTreeSet<Logic> {
         match self {
             GameType::Player => BTreeSet::from([Logic::Collision, Logic::Control, Logic::Resource]),
-            GameType::Tile => BTreeSet::from([Logic::Collision, Logic::Linking]),
             GameType::Character => {
                 BTreeSet::from([Logic::Collision, Logic::Resource, Logic::Linking])
             }
             GameType::Rsrc => BTreeSet::from([Logic::Resource]),
+            GameType::Link => BTreeSet::from([Logic::Linking, Logic::Collision]),
             GameType::Room => BTreeSet::from([Logic::Linking]),
         }
     }

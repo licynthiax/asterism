@@ -10,8 +10,8 @@ use crate::json::*;
 
 pub fn generate(path: &std::path::Path) -> Result<Game, Error> {
     let program = Program::from_json(path)?;
-    let _ceptre = Ceptre::from_program(program)?;
-    let game = Game::new();
+    let ceptre = Ceptre::from_program(program)?;
+    let game: Game = ceptre.into();
     Ok(game)
 }
 
@@ -24,10 +24,17 @@ pub enum Error<'e> {
     Io(std::io::Error),
     /// error from parsing annotations
     Parse(nom::Err<nom::error::Error<&'e str>>),
+    /// ceptre file missing builtins
     BuiltinNotFound(json::BuiltinTypes),
+    /// couldn't find a core game type
     TypeNotFound(boxsy_info::GameType),
+    /// couldn't find a rule
     RuleNotFound(&'e str),
+    /// couldn't find a predicate in the rule?
     PredNotFound(&'e str),
+    /// something went wrong with establishing the initial state
+    State(&'e str),
+    /// anything else
     Custom(&'e str),
 }
 
@@ -41,6 +48,7 @@ impl<'e> std::fmt::Display for Error<'e> {
             Error::TypeNotFound(t) => write!(fmt, "unable to map asterism type {t}"),
             Error::RuleNotFound(e) => write!(fmt, "unable to match rule {e}"),
             Error::PredNotFound(e) => write!(fmt, "unable to match predicate {e}"),
+            Error::State(e) => write!(fmt, "{e}"),
             Error::Custom(e) => write!(fmt, "{e}"),
         }
     }

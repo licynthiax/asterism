@@ -49,17 +49,35 @@ pub struct Header {
     pub preds: Vec<Predicate>,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Ord, PartialOrd, PartialEq, Eq)]
 pub struct Type {
     pub name: String,
     pub tp: Vec<Tp>,
     pub annote: Option<Annote>,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Eq, Debug)]
 pub struct Tp {
     pub name: String,
     pub args: Vec<String>,
+}
+
+impl Ord for Tp {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.name.cmp(&other.name)
+    }
+}
+
+impl PartialOrd for Tp {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for Tp {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
 }
 
 #[derive(Deserialize, Ord, PartialOrd, Eq, PartialEq, Clone, Debug)]
@@ -125,6 +143,7 @@ pub enum Annote {
     Synthesis(BTreeSet<Logic>),
     /// data mark different instantiations of syntheses
     Data(BTreeSet<Logic>),
+    SynthData(BTreeSet<Logic>),
     /// queries check relationships between logics-- while syntheses define what those
     /// relationships _are_, queries maintain them at runtime.
     Query(BTreeSet<Logic>),
@@ -136,17 +155,19 @@ impl Annote {
     pub fn get_logics_mut(&mut self) -> &mut BTreeSet<Logic> {
         match self {
             Annote::Integration(l) => l,
-            Annote::Synthesis(l) => l,
             Annote::Query(l) => l,
+            Annote::Synthesis(l) => l,
             Annote::Data(l) => l,
+            Annote::SynthData(l) => l,
         }
     }
     pub fn get_logics(&self) -> &BTreeSet<Logic> {
         match self {
             Annote::Integration(l) => l,
-            Annote::Synthesis(l) => l,
             Annote::Query(l) => l,
+            Annote::Synthesis(l) => l,
             Annote::Data(l) => l,
+            Annote::SynthData(l) => l,
         }
     }
 }
@@ -222,7 +243,7 @@ impl<'de> Deserialize<'de> for Annote {
                 E: serde::de::Error,
             {
                 let a_s = AnnoteString::new(s);
-                let a = crate::parse::parse(&a_s);
+                let a = crate::parse::json::parse(&a_s);
                 match a {
                     Ok((_, annote)) => Ok(annote),
                     Err(e) => Err(serde::de::Error::custom(Error::Parse(e))),
