@@ -17,11 +17,28 @@ pub enum EngineAction {
     MovePlayerBy(IVec2),
 }
 
+impl std::fmt::Debug for EngineAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EngineAction::ChangeResource(_, _) => write!(f, "EngineAction::ChangeResource"),
+            EngineAction::MoveTile(_, _) => write!(f, "EngineAction::MoveTile"),
+            EngineAction::MoveCharacter(_, _) => write!(f, "EngineAction::MoveCharacter"),
+            EngineAction::MoveRoom(_, _) => write!(f, "EngineAction::MoveRoom"),
+            EngineAction::AddCharacter(_, _) => write!(f, "EngineAction::AddCharacter"),
+            EngineAction::AddTile(_, _, _) => write!(f, "EngineAction::AddTile"),
+            EngineAction::MovePlayer(_) => write!(f, "EngineAction::MovePlayer"),
+            EngineAction::MovePlayerBy(_) => write!(f, "EngineAction::MovePlayerBy"),
+        }
+    }
+}
+
 impl EngineAction {
     pub fn perform_action(&self, state: &mut State, logics: &mut Logics) {
         match &self {
             Self::ChangeResource(pool, transaction) => {
-                logics.resources.handle_predicate(&(*pool, *transaction));
+                logics
+                    .resources
+                    .handle_predicate(&(pool.clone(), transaction.clone()));
             }
             Self::MoveTile(old_pos, new_pos) => {
                 if let Some(id) = logics.collision.tile_at_pos(old_pos) {
@@ -79,7 +96,7 @@ impl EngineAction {
     }
 }
 
-pub(crate) struct Events {
+pub struct Events {
     pub control: Vec<(CtrlEvent, EngineAction)>,
     pub collision: Vec<(ColEvent, EngineAction)>,
     pub linking: Vec<(LinkingEvent, EngineAction)>,

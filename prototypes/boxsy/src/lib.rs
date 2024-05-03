@@ -64,7 +64,7 @@ pub fn window_conf() -> Conf {
 pub struct Game {
     pub state: State,
     pub logics: Logics,
-    events: Events,
+    pub events: Events,
     pub draw: Draw,
 }
 
@@ -192,6 +192,7 @@ impl Logics {
 
 pub async fn run(mut game: Game) {
     setup(&mut game);
+    dbg!(&game.events.collision);
 
     loop {
         draw(&mut game);
@@ -283,14 +284,71 @@ fn collision(game: &mut Game) {
     let current_room = game.get_current_room();
     game.logics.collision.update();
 
-    for ((room, col_event), reaction) in game.events.collision.iter() {
-        if game
+    for ((room, ent1, ent2), reaction) in game.events.collision.iter() {
+        if *room != current_room {
+            continue;
+        }
+        let match_event = game
             .logics
             .collision
             .events()
             .iter()
-            .any(|event| col_event == event && *room == current_room)
-        {
+            .any(|event| match event {
+                Contact::Ent(i, j) => {
+                    let i = game.logics.collision.get_ident_data(ColIdent::EntIdx(*i));
+                    let j = game.logics.collision.get_ident_data(ColIdent::EntIdx(*j));
+                    let matched1 = match i {
+                        TileMapColData::Ent { id, .. } => match id {
+                            ColEntType::Player => *ent1 == CollisionEnt::Player,
+                            ColEntType::Character(ch_id) => {
+                                if let CollisionEnt::Character(id) = ent1 {
+                                    id == ch_id
+                                } else {
+                                    false
+                                }
+                            }
+                        },
+                        _ => false,
+                    };
+                    let matched2 = match j {
+                        TileMapColData::Ent { id, .. } => match id {
+                            ColEntType::Player => *ent2 == CollisionEnt::Player,
+                            ColEntType::Character(ch_id) => {
+                                if let CollisionEnt::Character(id) = ent2 {
+                                    id == ch_id
+                                } else {
+                                    false
+                                }
+                            }
+                        },
+                        _ => false, // unreachable
+                    };
+                    matched1 && matched2
+                }
+                Contact::Tile(i, pos) => {
+                    let i = game.logics.collision.get_ident_data(ColIdent::EntIdx(*i));
+                    let matched1 = match i {
+                        TileMapColData::Ent { id, .. } => match id {
+                            ColEntType::Player => *ent1 == CollisionEnt::Player,
+                            ColEntType::Character(ch_id) => {
+                                if let CollisionEnt::Character(id) = ent1 {
+                                    id == ch_id
+                                } else {
+                                    false
+                                }
+                            }
+                        },
+                        _ => false,
+                    };
+                    let matched2 = if let CollisionEnt::Tile(t_pos) = *ent2 {
+                        t_pos == *pos
+                    } else {
+                        false
+                    };
+                    matched1 && matched2
+                }
+            });
+        if match_event {
             reaction.perform_action(&mut game.state, &mut game.logics);
         }
     }
@@ -337,7 +395,7 @@ fn draw(game: &mut Game) {
 
     while let Some((id, col_data)) = col_data.next() {
         match (id, col_data) {
-            (ColIdent::Position(pos), TileMapColData::Position { id: tile, .. }) => {
+            (ColIdent::Position(pos), TileMapColDataMut::Position { id: tile, .. }) => {
                 let color = game
                     .draw
                     .colors
@@ -351,7 +409,7 @@ fn draw(game: &mut Game) {
                     *color,
                 );
             }
-            (ColIdent::EntIdx(idx), TileMapColData::Ent { pos, id: ent, .. }) => match ent {
+            (ColIdent::EntIdx(idx), TileMapColDataMut::Ent { pos, id: ent, .. }) => match ent {
                 ColEntType::Player => {
                     let color = game
                         .draw
@@ -373,7 +431,7 @@ fn draw(game: &mut Game) {
                         WHITE,
                     );
                 }
-                ColEntType::Character => {
+                ColEntType::Character(_) => {
                     let character = game.state.rooms[current_room].chars[idx - 1].0;
                     let color = game
                         .draw
@@ -406,7 +464,7 @@ fn draw(game: &mut Game) {
         event_type,
     } in game.logics.resources.events()
     {
-        let timer = |x, y, name| {
+        let timer = |x, y, name: String| {
             Box::new(move || {
                 draw_text(
                     &format! {"{} get!", name},
@@ -426,7 +484,7 @@ fn draw(game: &mut Game) {
                         {
                             game.draw
                                 .draw_timer
-                                .push((timer(pos.x, pos.y, pool.rsrc.name()), 120));
+                                .push((timer(pos.x, pos.y, pool.rsrc.name().to_string()), 120));
                         }
                     }
                 }
@@ -437,7 +495,7 @@ fn draw(game: &mut Game) {
                         {
                             game.draw
                                 .draw_timer
-                                .push((timer(pos.x, pos.y, pool.rsrc.name()), 120));
+                                .push((timer(pos.x, pos.y, pool.rsrc.name().to_string()), 120));
                         }
                     }
                 }

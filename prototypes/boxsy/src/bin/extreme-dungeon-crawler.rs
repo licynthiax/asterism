@@ -16,8 +16,9 @@ fn init(game: &mut Game) {
     player.pos = IVec2::new(3, 3);
     player.color = PURPLE;
 
-    let player_rocks = game.log_rsrc("rock");
-    player.add_inventory_item(player_rocks, 0);
+    let rocks = game.log_rsrc("rock".to_string());
+
+    player.add_inventory_item(rocks.clone(), 0);
 
     game.set_player(player);
 
@@ -66,22 +67,26 @@ r#"00000000
     }
 
     let mut character = Character::new();
-
-    let char_rocks = game.log_rsrc("rock");
-    character.add_inventory_item(char_rocks, 2);
-
+    character.add_inventory_item(rocks.clone(), 2);
     character.pos = IVec2::new(1, 2);
     character.color = BROWN;
     let char_id = game.add_character(character, 0);
 
     game.add_collision_predicate(
-        (0, Contact::Ent(0, char_id.idx() + 1)),
+        (0, CollisionEnt::Player, CollisionEnt::Character(char_id)),
         EngineAction::ChangeResource(
-            PoolID::new(EntID::Character(char_id), char_rocks),
-            Transaction::Trade(1, PoolID::new(EntID::Player, player_rocks)),
+            PoolID::new(EntID::Character(char_id), rocks.clone()),
+            Transaction::Trade(1, PoolID::new(EntID::Player, rocks.clone())),
         ),
     );
     game.add_link((0, CollisionEnt::Character(char_id)), (2, IVec2::new(3, 2)));
+
+    let mut character = Character::new();
+    character.pos = IVec2::new(3, 3);
+    character.color = BROWN;
+    let char_id = game.add_character(character, 1);
+    game.add_link((1, CollisionEnt::Character(char_id)), (2, IVec2::new(3, 2)));
+
     game.add_link(
         (0, CollisionEnt::Tile(IVec2::new(5, 6))),
         (1, IVec2::new(3, 1)),

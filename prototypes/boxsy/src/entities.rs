@@ -10,28 +10,15 @@ impl Game {
         self.draw.colors.insert(EntID::Player, player.color);
         self.logics.consume_player(player);
 
-        if !self.state.player {
-            for ((_, col_event), _) in self.events.collision.iter_mut() {
-                match col_event {
-                    Contact::Ent(i, j) => {
-                        *i += 1;
-                        *j += 1;
-                    }
-                    Contact::Tile(i, _) => {
-                        *i += 1;
-                    }
-                }
-            }
-        }
-
         self.state.player = true;
     }
 
     pub fn add_character(&mut self, character: Character, room: usize) -> CharacterID {
         let id = CharacterID::new(self.state.char_id_max);
+
         for (rsrc_id, val) in character.inventory.iter() {
             self.logics.resources.items.insert(
-                PoolID::new(EntID::Character(id), *rsrc_id),
+                PoolID::new(EntID::Character(id), rsrc_id.clone()),
                 asterism::resources::PoolValues {
                     val: *val,
                     min: 0,
@@ -46,32 +33,14 @@ impl Game {
             .colors
             .insert(EntID::Character(id), character.color);
 
-        for ((_, col_event), _) in self.events.collision.iter_mut() {
-            match col_event {
-                Contact::Ent(i, j) => {
-                    if *i <= id.idx() {
-                        *i += 1;
-                    }
-                    if *j <= id.idx() {
-                        *j += 1;
-                    }
-                }
-                Contact::Tile(i, _) => {
-                    if *i <= id.idx() {
-                        *i += 1;
-                    }
-                }
-            }
-        }
-
         self.state.char_id_max += 1;
         id
     }
 
-    pub fn log_rsrc(&mut self, name: &'static str) -> RsrcID {
+    pub fn log_rsrc(&mut self, name: String) -> RsrcID {
         let id = RsrcID::new(self.state.rsrc_id_max, name);
         self.state.rsrc_id_max += 1;
-        self.state.resources.push(id);
+        self.state.resources.push(id.clone());
         id
     }
 
@@ -82,16 +51,13 @@ impl Game {
             CollisionEnt::Player => unreachable!(),
             CollisionEnt::Tile(pos) => {
                 self.add_collision_predicate(
-                    (from.0, Contact::Tile(0, pos)),
+                    (from.0, CollisionEnt::Player, CollisionEnt::Tile(pos)),
                     EngineAction::MoveRoom(to.0, to.1),
                 );
             }
             CollisionEnt::Character(id) => {
                 self.add_collision_predicate(
-                    (
-                        from.0,
-                        Contact::Ent(0, self.state.get_col_idx(id, Some(from.0)).unwrap()),
-                    ),
+                    (from.0, CollisionEnt::Player, CollisionEnt::Character(id)),
                     EngineAction::MoveRoom(to.0, to.1),
                 );
             }
@@ -122,10 +88,8 @@ impl Game {
         let map_length = WORLD_SIZE * WORLD_SIZE + WORLD_SIZE - 1;
         #[allow(clippy::comparison_chain)]
         if map.len() > map_length {
-            dbg!(map_length, map.len());
             return Err("map is too big".to_string());
         } else if map.len() < map_length {
-            dbg!(map_length, map.len());
             return Err("map is too small".to_string());
         }
 
@@ -177,30 +141,9 @@ impl Game {
             .handle_predicate(&CollisionReaction::RemoveEnt(0));
 
         let mut remove = Vec::new();
-        for (idx, ((_, col_event), _)) in self.events.collision.iter_mut().enumerate() {
-            match col_event {
-                Contact::Ent(i, j) => {
-                    if *i == 0 {
-                        remove.push(idx);
-                    }
-                    if *j == 0 {
-                        remove.push(idx);
-                    }
-                    if *i > 0 {
-                        *i -= 1;
-                    }
-                    if *j > 0 {
-                        *j -= 1;
-                    }
-                }
-                Contact::Tile(i, _) => {
-                    if *i == 0 {
-                        remove.push(idx);
-                    }
-                    if *i > 0 {
-                        *i -= 1;
-                    }
-                }
+        for (idx, ((_, ent1, ent2), _)) in self.events.collision.iter_mut().enumerate() {
+            if *ent1 == CollisionEnt::Player || *ent2 == CollisionEnt::Player {
+                remove.push(idx);
             }
         }
 
@@ -232,31 +175,14 @@ impl Game {
             ent_idx.unwrap_or_else(|| panic!("character with id {:?} not found", character));
 
         let mut remove = Vec::new();
-        for (idx, ((room, col_event), _)) in self.events.collision.iter_mut().enumerate() {
-            if *room == current_room {
-                match col_event {
-                    Contact::Ent(i, j) => {
-                        if *i != 0 && *i - 1 == ent_idx {
-                            remove.push(idx);
-                        }
-                        if *j != 0 && *j - 1 == ent_idx {
-                            remove.push(idx);
-                        }
-                        if *i > ent_idx {
-                            *i -= 1;
-                        }
-                        if *j > ent_idx {
-                            *j -= 1;
-                        }
-                    }
-                    Contact::Tile(i, _) => {
-                        if *i != 0 && *i - 1 == ent_idx {
-                            remove.push(idx);
-                        }
-                        if *i > ent_idx {
-                            *i -= 1;
-                        }
-                    }
+        for (idx, ((_, ent1, ent2), _)) in self.events.collision.iter_mut().enumerate() {
+            if let CollisionEnt::Character(ch) = *ent1 {
+                if ch == character {
+                    remove.push(idx);
+                }
+            } else if let CollisionEnt::Character(ch) = *ent2 {
+                if ch == character {
+                    remove.push(idx);
                 }
             }
         }
@@ -266,7 +192,7 @@ impl Game {
         self.state.rooms[room].chars.remove(ent_idx);
     }
 
-    // unsure if this is needed atm
+    // unsure if this is needed????
     pub(crate) fn remove_tile_at_pos(&mut self, room: usize, pos: IVec2) {
         self.state.rooms[room].map[pos.y as usize][pos.x as usize] = None;
         let current_room = self.get_current_room();
@@ -278,10 +204,14 @@ impl Game {
         }
 
         let mut remove = Vec::new();
-        for (idx, ((event_room, col_event), _)) in self.events.collision.iter_mut().enumerate() {
+        for (idx, ((event_room, ent1, ent2), _)) in self.events.collision.iter_mut().enumerate() {
             if *event_room == room {
-                if let Contact::Tile(_, ev_pos) = col_event {
-                    if pos == *ev_pos {
+                if let CollisionEnt::Tile(tile_pos) = *ent1 {
+                    if tile_pos == pos {
+                        remove.push(idx);
+                    }
+                } else if let CollisionEnt::Tile(tile_pos) = *ent2 {
+                    if tile_pos == pos {
                         remove.push(idx);
                     }
                 }
@@ -361,13 +291,13 @@ pub fn load_room(state: &mut State, logics: &mut Logics, room: usize) {
         }
     }
 
-    for (_, pos) in state.rooms[room].chars.iter() {
+    for (id, pos) in state.rooms[room].chars.iter() {
         logics.collision.positions.push(*pos);
         logics.collision.amt_moved.push(IVec2::ZERO);
         logics
             .collision
             .metadata
-            .push(CollisionData::new(true, true, ColEntType::Character));
+            .push(CollisionData::new(true, true, ColEntType::Character(*id)));
     }
 }
 

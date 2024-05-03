@@ -23,7 +23,7 @@ macro_rules! id_impl_new {
 
 id_impl_new!([derive(Hash, Ord, PartialOrd)] TileID, [derive(Hash, Ord, PartialOrd)] CharacterID);
 
-#[derive(Hash, Ord, PartialOrd, Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Hash, Ord, PartialOrd, Clone, PartialEq, Eq, Debug)]
 pub struct PoolID {
     pub(crate) attached_to: EntID,
     pub(crate) rsrc: RsrcID,
@@ -35,21 +35,21 @@ impl PoolID {
     }
 }
 
-#[derive(Hash, Ord, PartialOrd, Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Hash, Ord, PartialOrd, Clone, PartialEq, Eq, Debug)]
 pub struct RsrcID {
     idx: usize,
-    name: &'static str,
+    name: String,
 }
 
 impl RsrcID {
-    pub fn new(idx: usize, name: &'static str) -> Self {
+    pub fn new(idx: usize, name: String) -> Self {
         Self { idx, name }
     }
     pub fn idx(&self) -> usize {
         self.idx
     }
-    pub fn name(&self) -> &'static str {
-        self.name
+    pub fn name(&self) -> &str {
+        &self.name
     }
 }
 
@@ -162,17 +162,16 @@ impl Character {
     }
 }
 
-use crate::collision::Contact;
 use asterism::control::ControlEvent;
 use asterism::resources::ResourceEvent;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ColEntType {
     Player,
-    Character,
+    Character(CharacterID),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CollisionEnt {
     Player,
     Tile(IVec2),
@@ -180,5 +179,5 @@ pub enum CollisionEnt {
 }
 
 pub type CtrlEvent = ControlEvent<ActionID>;
-pub type ColEvent = (usize, Contact); // usize is the current room number
+pub type ColEvent = (usize, CollisionEnt, CollisionEnt);
 pub type RsrcEvent = ResourceEvent<PoolID, i16>;
