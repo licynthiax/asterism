@@ -57,8 +57,29 @@ pub enum ColIdent {
     EntIdx(usize),
 }
 
-pub enum TileMapColData<'logic, TileID, EntID> {
+#[derive(Debug)]
+pub enum TileMapColData<'logic, TileID, EntID>
+where
+    TileID: Debug,
+    EntID: Debug,
+{
     Position {
+        pos: IVec2,
+        solid: bool,
+        id: &'logic TileID,
+    },
+    Ent {
+        pos: &'logic IVec2,
+        amt_moved: IVec2,
+        solid: bool,
+        fixed: bool,
+        id: &'logic EntID,
+    },
+}
+
+pub enum TileMapColDataMut<'logic, TileID, EntID> {
+    Position {
+        pos: IVec2,
         solid: bool,
         id: &'logic mut TileID,
     },
@@ -73,12 +94,15 @@ pub enum TileMapColData<'logic, TileID, EntID> {
 
 impl<TileID, EntID> Reaction for CollisionReaction<TileID, EntID> {}
 
-impl<TileID: Copy + Eq + Ord + Debug, EntID: Eq + Copy> Logic for TileMapCollision<TileID, EntID> {
+impl<TileID: Copy + Eq + Ord + Debug, EntID: Eq + Copy + Debug> Logic
+    for TileMapCollision<TileID, EntID>
+{
     type Event = Contact;
     type Reaction = CollisionReaction<TileID, EntID>;
 
     type Ident = ColIdent;
     type IdentData<'logic> = TileMapColData<'logic, TileID, EntID> where Self: 'logic;
+    type IdentDataMut<'logic> = TileMapColDataMut<'logic, TileID, EntID> where Self: 'logic;
 
     type DataIter<'logic> = ColDataIter<'logic, TileID, EntID> where Self: 'logic;
 
@@ -109,7 +133,29 @@ impl<TileID: Copy + Eq + Ord + Debug, EntID: Eq + Copy> Logic for TileMapCollisi
         };
     }
 
-    fn get_ident_data(&mut self, ident: Self::Ident) -> Self::IdentData<'_> {
+    fn get_ident_data(&self, ident: Self::Ident) -> Self::IdentData<'_> {
+        match ident {
+            ColIdent::Position(pos) => {
+                if self.map[pos.y as usize][pos.x as usize].is_none() {
+                    panic!("no tile at position {}", pos);
+                }
+                let solid = self.tile_solid(&self.map[pos.y as usize][pos.x as usize].unwrap());
+                let id = self.map[pos.y as usize][pos.x as usize].as_ref().unwrap();
+                TileMapColData::Position { solid, id, pos }
+            }
+            ColIdent::EntIdx(idx) => {
+                let meta = &self.metadata[idx];
+                TileMapColData::Ent {
+                    pos: &self.positions[idx],
+                    amt_moved: self.amt_moved[idx],
+                    solid: meta.solid,
+                    fixed: meta.fixed,
+                    id: &meta.id,
+                }
+            }
+        }
+    }
+    fn get_ident_data_mut(&mut self, ident: Self::Ident) -> Self::IdentDataMut<'_> {
         match ident {
             ColIdent::Position(pos) => {
                 if self.map[pos.y as usize][pos.x as usize].is_none() {
@@ -117,11 +163,11 @@ impl<TileID: Copy + Eq + Ord + Debug, EntID: Eq + Copy> Logic for TileMapCollisi
                 }
                 let solid = self.tile_solid(&self.map[pos.y as usize][pos.x as usize].unwrap());
                 let id = self.map[pos.y as usize][pos.x as usize].as_mut().unwrap();
-                TileMapColData::Position { solid, id }
+                TileMapColDataMut::Position { solid, id, pos }
             }
             ColIdent::EntIdx(idx) => {
                 let meta = &mut self.metadata[idx];
-                TileMapColData::Ent {
+                TileMapColDataMut::Ent {
                     pos: &mut self.positions[idx],
                     amt_moved: self.amt_moved[idx],
                     solid: meta.solid,
@@ -392,9 +438,9 @@ where
 impl<'logic, TileID, EntID> LendingIterator for ColDataIter<'logic, TileID, EntID>
 where
     TileID: Copy + Eq + Ord + Debug,
-    EntID: Copy + Eq,
+    EntID: Copy + Eq + Debug,
 {
-    type Item<'a> = (ColIdent, TileMapColData<'a, TileID, EntID>) where Self: 'a;
+    type Item<'a> = (ColIdent, TileMapColDataMut<'a, TileID, EntID>) where Self: 'a;
 
     fn next(&mut self) -> Option<Self::Item<'_>> {
         let inc_pos = |pos: &mut IVec2, len: usize| {
@@ -428,13 +474,13 @@ where
         {
             let id = ColIdent::Position(self.tile_count);
             inc_pos(&mut self.tile_count, self.collision.map.len());
-            return Some((id, self.collision.get_ident_data(id)));
+            return Some((id, self.collision.get_ident_data_mut(id)));
         }
 
         if self.ent_count < self.collision.positions.len() {
             let id = ColIdent::EntIdx(self.ent_count);
             self.ent_count += 1;
-            return Some((id, self.collision.get_ident_data(id)));
+            return Some((id, self.collision.get_ident_data_mut(id)));
         }
 
         None

@@ -135,7 +135,8 @@ impl<NodeID: Copy + Eq + 'static> Logic for GraphedLinking<NodeID> {
     /// index of graph
     type Ident = usize;
     /// list of graph nodes and edges
-    type IdentData<'a> = &'a mut NodeID where Self: 'a;
+    type IdentData<'a> = &'a NodeID where Self: 'a;
+    type IdentDataMut<'a> = &'a mut NodeID where Self: 'a;
 
     type DataIter<'logic> = LinkingDataIter<'logic, NodeID> where Self: 'logic;
 
@@ -149,7 +150,11 @@ impl<NodeID: Copy + Eq + 'static> Logic for GraphedLinking<NodeID> {
         }
     }
 
-    fn get_ident_data(&mut self, ident: Self::Ident) -> Self::IdentData<'_> {
+    fn get_ident_data(&self, ident: Self::Ident) -> Self::IdentData<'_> {
+        let graph = &self.graphs[ident];
+        &graph.graph.nodes[graph.current_node]
+    }
+    fn get_ident_data_mut(&mut self, ident: Self::Ident) -> Self::IdentDataMut<'_> {
         let graph = &mut self.graphs[ident];
         &mut graph.graph.nodes[graph.current_node]
     }
@@ -179,7 +184,7 @@ where
 {
     type Item<'a> = (
         <GraphedLinking<ID> as Logic>::Ident,
-        <GraphedLinking<ID> as Logic>::IdentData<'a>
+        <GraphedLinking<ID> as Logic>::IdentDataMut<'a>
     )
     where
         Self: 'a;
@@ -189,7 +194,10 @@ where
             None
         } else {
             self.count += 1;
-            Some((self.count - 1, self.linking.get_ident_data(self.count - 1)))
+            Some((
+                self.count - 1,
+                self.linking.get_ident_data_mut(self.count - 1),
+            ))
         }
     }
 }

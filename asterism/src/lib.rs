@@ -26,19 +26,25 @@ pub use lending_iterator::LendingIterator;
 /// An operational logic
 pub trait Logic {
     /// the events that this logic can generate
-    type Event: Event + Copy;
+    type Event: Event + Clone;
     /// the reactions that this logic can act on
     type Reaction: Reaction;
 
     /// a single unit/entity within the logic
-    type Ident: Copy;
+    type Ident: Clone;
     /// the data of the logic associated with its identity (`<Self as Logic>::Ident`).
     type IdentData<'logic>
     where
         Self: 'logic;
+    type IdentDataMut<'logic>
+    where
+        Self: 'logic;
 
     type DataIter<'logic>: LendingIterator<
-        Item<'logic> = (<Self as Logic>::Ident, <Self as Logic>::IdentData<'logic>),
+        Item<'logic> = (
+            <Self as Logic>::Ident,
+            <Self as Logic>::IdentDataMut<'logic>,
+        ),
     >
     where
         Self: 'logic;
@@ -47,7 +53,9 @@ pub trait Logic {
     fn handle_predicate(&mut self, reaction: &Self::Reaction);
 
     /// exposes the data associated with a particular ""entity"" of the logic.
-    fn get_ident_data(&mut self, ident: Self::Ident) -> Self::IdentData<'_>;
+    fn get_ident_data(&self, ident: Self::Ident) -> Self::IdentData<'_>;
+    /// exposes the data associated with a particular ""entity"" of the logic.
+    fn get_ident_data_mut(&mut self, ident: Self::Ident) -> Self::IdentDataMut<'_>;
 
     /// returns a [lending iterator](lending_iterator::LendingIterator) for the data of the logic
     fn data_iter(&mut self) -> Self::DataIter<'_>;

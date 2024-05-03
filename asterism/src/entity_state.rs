@@ -144,7 +144,8 @@ impl<ID: Copy + Eq + 'static> Logic for FlatEntityState<ID> {
     /// index of graph
     type Ident = usize;
     /// current position in logic
-    type IdentData<'a> = &'a mut ID where Self: 'a;
+    type IdentData<'a> = &'a ID where Self: 'a;
+    type IdentDataMut<'a> = &'a mut ID where Self: 'a;
 
     type DataIter<'logic> = FesDataIter<'logic, ID> where Self: 'logic;
 
@@ -158,7 +159,11 @@ impl<ID: Copy + Eq + 'static> Logic for FlatEntityState<ID> {
         }
     }
 
-    fn get_ident_data(&mut self, ident: Self::Ident) -> Self::IdentData<'_> {
+    fn get_ident_data(&self, ident: Self::Ident) -> Self::IdentData<'_> {
+        let graph = &self.graphs[ident];
+        &graph.graph.nodes[graph.current_node]
+    }
+    fn get_ident_data_mut(&mut self, ident: Self::Ident) -> Self::IdentDataMut<'_> {
         let graph = &mut self.graphs[ident];
         &mut graph.graph.nodes[graph.current_node]
     }
@@ -188,7 +193,7 @@ where
 {
     type Item<'a> = (
         <FlatEntityState<ID> as Logic>::Ident,
-        <FlatEntityState<ID> as Logic>::IdentData<'a>
+        <FlatEntityState<ID> as Logic>::IdentDataMut<'a>
     )
     where
         Self: 'a;
@@ -200,7 +205,7 @@ where
             self.count += 1;
             Some((
                 self.count - 1,
-                self.ent_state.get_ident_data(self.count - 1),
+                self.ent_state.get_ident_data_mut(self.count - 1),
             ))
         }
     }

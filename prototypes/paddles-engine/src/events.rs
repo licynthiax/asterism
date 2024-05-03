@@ -63,7 +63,7 @@ impl EngineAction {
                 let ent_idx = state.get_col_idx(*ent);
 
                 let sides_touched = logics.collision.sides_touched(ball_idx, ent_idx);
-                let vals = logics.physics.get_ident_data(ball.idx());
+                let vals = logics.physics.get_ident_data_mut(ball.idx());
                 if sides_touched.y != 0.0 {
                     vals.vel.y *= -1.0;
                 }

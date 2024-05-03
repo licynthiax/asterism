@@ -218,6 +218,12 @@ impl<ID: Copy + Eq> AabbCollision<ID> {
 }
 
 pub struct AabbColData<'data, ID: Copy + Eq> {
+    pub center: &'data Vec2,
+    pub half_size: &'data Vec2,
+    pub vel: &'data Vec2,
+    pub meta: &'data CollisionData<ID>,
+}
+pub struct AabbColDataMut<'data, ID: Copy + Eq> {
     pub center: &'data mut Vec2,
     pub half_size: &'data mut Vec2,
     pub vel: &'data mut Vec2,
@@ -230,6 +236,7 @@ impl<ID: Copy + Eq + 'static> Logic for AabbCollision<ID> {
 
     type Ident = usize;
     type IdentData<'logic> = AabbColData<'logic, ID>;
+    type IdentDataMut<'logic> = AabbColData<'logic, ID>;
 
     type DataIter<'logic> = ColDataIter<'logic, ID> where Self: 'logic;
 
@@ -277,7 +284,15 @@ impl<ID: Copy + Eq + 'static> Logic for AabbCollision<ID> {
         }
     }
 
-    fn get_ident_data(&mut self, ident: Self::Ident) -> Self::IdentData<'_> {
+    fn get_ident_data(&self, ident: Self::Ident) -> Self::IdentData<'_> {
+        AabbColData {
+            center: &self.centers[ident],
+            half_size: &self.half_sizes[ident],
+            vel: &self.velocities[ident],
+            meta: &self.metadata[ident],
+        }
+    }
+    fn get_ident_data_mut(&mut self, ident: Self::Ident) -> Self::IdentDataMut<'_> {
         AabbColData {
             center: &mut self.centers[ident],
             half_size: &mut self.half_sizes[ident],

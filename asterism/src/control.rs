@@ -40,7 +40,8 @@ where
 
     /// for each mapping/control locus
     type Ident = usize;
-    type IdentData<'logic> = &'logic mut [Action<ID, Wrapper::KeyCode>];
+    type IdentData<'logic> = &'logic [Action<ID, Wrapper::KeyCode>];
+    type IdentDataMut<'logic> = &'logic mut [Action<ID, Wrapper::KeyCode>];
 
     type DataIter<'logic> = CtrlDataIter<'logic, ID, Wrapper> where Self: 'logic;
 
@@ -62,7 +63,10 @@ where
         }
     }
 
-    fn get_ident_data(&mut self, ident: Self::Ident) -> Self::IdentData<'_> {
+    fn get_ident_data(&self, ident: Self::Ident) -> Self::IdentData<'_> {
+        &self.mapping[ident]
+    }
+    fn get_ident_data_mut(&mut self, ident: Self::Ident) -> Self::IdentDataMut<'_> {
         &mut self.mapping[ident]
     }
 
@@ -213,14 +217,17 @@ where
     ID: Copy + Eq + Ord + 'static,
     Wrapper: InputWrapper + 'static,
 {
-    type Item<'a> = (<KeyboardControl<ID, Wrapper> as Logic>::Ident, <KeyboardControl<ID, Wrapper> as Logic>::IdentData<'a>) where Self: 'a;
+    type Item<'a> = (<KeyboardControl<ID, Wrapper> as Logic>::Ident, <KeyboardControl<ID, Wrapper> as Logic>::IdentDataMut<'a>) where Self: 'a;
 
     fn next(&mut self) -> Option<Self::Item<'_>> {
         self.count += 1;
         if self.count == self.control.mapping.len() {
             None
         } else {
-            Some((self.count - 1, self.control.get_ident_data(self.count - 1)))
+            Some((
+                self.count - 1,
+                self.control.get_ident_data_mut(self.count - 1),
+            ))
         }
     }
 }

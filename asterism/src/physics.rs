@@ -14,6 +14,11 @@ pub struct PointPhysics {
 }
 
 pub struct PointPhysData<'data> {
+    pub pos: &'data Vec2,
+    pub vel: &'data Vec2,
+    pub acc: &'data Vec2,
+}
+pub struct PointPhysDataMut<'data> {
     pub pos: &'data mut Vec2,
     pub vel: &'data mut Vec2,
     pub acc: &'data mut Vec2,
@@ -25,6 +30,7 @@ impl Logic for PointPhysics {
 
     type Ident = usize;
     type IdentData<'a> = PointPhysData<'a> where Self: 'a;
+    type IdentDataMut<'a> = PointPhysDataMut<'a> where Self: 'a;
 
     type DataIter<'a> = PtPhysicsDataIter<'a> where Self: 'a;
 
@@ -50,8 +56,15 @@ impl Logic for PointPhysics {
         }
     }
 
-    fn get_ident_data(&mut self, ident: Self::Ident) -> Self::IdentData<'_> {
+    fn get_ident_data(&self, ident: Self::Ident) -> Self::IdentData<'_> {
         PointPhysData {
+            pos: &self.positions[ident],
+            vel: &self.velocities[ident],
+            acc: &self.accelerations[ident],
+        }
+    }
+    fn get_ident_data_mut(&mut self, ident: Self::Ident) -> Self::IdentDataMut<'_> {
+        PointPhysDataMut {
             pos: &mut self.positions[ident],
             vel: &mut self.velocities[ident],
             acc: &mut self.accelerations[ident],
@@ -158,14 +171,17 @@ pub struct PtPhysicsDataIter<'phys> {
 }
 
 impl<'phys> LendingIterator for PtPhysicsDataIter<'phys> {
-    type Item<'a> = (<PointPhysics as Logic>::Ident, <PointPhysics as Logic>::IdentData<'a>) where Self: 'a;
+    type Item<'a> = (<PointPhysics as Logic>::Ident, <PointPhysics as Logic>::IdentDataMut<'a>) where Self: 'a;
 
     fn next(&mut self) -> Option<Self::Item<'_>> {
         if self.count == self.physics.positions.len() {
             None
         } else {
             self.count += 1;
-            Some((self.count - 1, self.physics.get_ident_data(self.count - 1)))
+            Some((
+                self.count - 1,
+                self.physics.get_ident_data_mut(self.count - 1),
+            ))
         }
     }
 }
