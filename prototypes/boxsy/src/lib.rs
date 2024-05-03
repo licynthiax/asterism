@@ -192,7 +192,6 @@ impl Logics {
 
 pub async fn run(mut game: Game) {
     setup(&mut game);
-    dbg!(&game.events.collision);
 
     loop {
         draw(&mut game);

@@ -5,7 +5,7 @@ use std::fmt::Debug;
 use asterism::{Event, LendingIterator, Logic, Reaction};
 use macroquad::math::IVec2;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct CollisionData<ID: Copy> {
     pub solid: bool,
     pub fixed: bool,
@@ -191,7 +191,7 @@ impl<TileID: Copy + Eq + Ord + Debug, EntID: Eq + Copy + Debug> Logic
     }
 }
 
-impl<TileID: Eq + Ord + Copy + Debug, EntID: Eq + Copy> TileMapCollision<TileID, EntID> {
+impl<TileID: Eq + Ord + Copy + Debug, EntID: Eq + Copy + Debug> TileMapCollision<TileID, EntID> {
     pub fn new(width: usize, height: usize) -> Self {
         let mut collision = Self {
             map: Vec::new(),
@@ -231,6 +231,8 @@ impl<TileID: Eq + Ord + Copy + Debug, EntID: Eq + Copy> TileMapCollision<TileID,
         }
 
         std::mem::swap(&mut self.positions, &mut positions);
+        std::mem::swap(&mut self.amt_moved, &mut amt_moved);
+        std::mem::swap(&mut self.metadata, &mut metadata);
     }
 
     pub fn clear_tile_data(&mut self) {

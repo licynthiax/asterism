@@ -95,7 +95,6 @@ impl From<Ceptre> for boxsy::Game {
             p.color = PURPLE;
             p.pos = state.generate_pos(&map[0]);
             add_char(&mut map[0], p.pos, 'p');
-            dbg!(&state.player.items);
             for item in state.player.items.iter() {
                 if let Some(i) = items.iter().find(|i| i.name() == item.id) {
                     p.add_inventory_item(i.clone(), item.count);
@@ -120,7 +119,6 @@ impl From<Ceptre> for boxsy::Game {
             ch.pos = state.generate_pos(&map[c.in_room]);
             add_char(&mut map[c.in_room], ch.pos, 'c');
 
-            dbg!(&c.items);
             for item in c.items.iter() {
                 if let Some(i) = items.iter().find(|i| i.name() == item.id) {
                     ch.add_inventory_item(i.clone(), item.count);
@@ -152,7 +150,6 @@ impl From<Ceptre> for boxsy::Game {
                 );
             }
         }
-        // dbg!(&game.events.collision);
 
         // tiles
         for (start_pos, link) in tiles.iter().flatten().zip(state.tiles.iter()) {
@@ -163,9 +160,6 @@ impl From<Ceptre> for boxsy::Game {
             );
         }
 
-        println!("{}\n---", map[0]);
-        println!("{}\n---", map[1]);
-        println!("{}\n---", map[2]);
         game
     }
 }
