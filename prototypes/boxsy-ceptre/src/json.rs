@@ -1,7 +1,7 @@
 #![allow(clippy::upper_case_acronyms, non_camel_case_types, unused)]
 /// types for JSON deserialization
 use std::collections::BTreeSet;
-use std::path::Path;
+use std::path::PathBuf;
 
 use serde::de::{Deserializer, Visitor};
 use serde::Deserialize;
@@ -218,7 +218,7 @@ impl AnnoteString {
 }
 
 impl Program {
-    pub fn from_json(file: &Path) -> Result<Self, Error> {
+    pub fn from_json<'e>(file: PathBuf) -> Result<Self, Error<'e>> {
         let json = std::fs::read_to_string(file).map_err(Error::Io)?;
         serde_json::from_str(&json).map_err(Error::Serde)
     }

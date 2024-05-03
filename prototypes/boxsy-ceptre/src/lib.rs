@@ -8,7 +8,7 @@ mod parse;
 use crate::convert::*;
 use crate::json::*;
 
-pub fn generate(path: &std::path::Path) -> Result<Game, Error> {
+pub fn generate<'a>(path: std::path::PathBuf) -> Result<Game, Error<'a>> {
     let program = Program::from_json(path)?;
     let ceptre = Ceptre::from_program(program)?;
     let game: Game = ceptre.into();
@@ -18,10 +18,12 @@ pub fn generate(path: &std::path::Path) -> Result<Game, Error> {
 #[derive(Debug)]
 /// crate-wide error type
 pub enum Error<'e> {
-    /// deserialization error
-    Serde(serde_json::Error),
+    /// command line
+    CommandLine(&'e str),
     /// error from reading files
     Io(std::io::Error),
+    /// deserialization error
+    Serde(serde_json::Error),
     /// error from parsing annotations
     Parse(nom::Err<nom::error::Error<&'e str>>),
     /// ceptre file missing builtins
@@ -41,6 +43,7 @@ pub enum Error<'e> {
 impl<'e> std::fmt::Display for Error<'e> {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
+            Error::CommandLine(e) => write!(fmt, "command line error: {e}"),
             Error::Serde(e) => write!(fmt, "serde error: {e}"),
             Error::Io(e) => write!(fmt, "io error: {e}"),
             Error::Parse(e) => write!(fmt, "parse error: {e}"),
