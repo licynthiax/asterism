@@ -21,20 +21,36 @@ macro_rules! id_impl_new {
     };
 }
 
-id_impl_new!([derive(Hash, Ord, PartialOrd)] TileID, [derive(Hash, Ord, PartialOrd)] CharacterID, [derive(Hash, Ord, PartialOrd)] RsrcID, [derive(Ord, PartialOrd)] LinkID, [derive(Hash)] UserQueryID);
+id_impl_new!([derive(Hash, Ord, PartialOrd)] TileID, [derive(Hash, Ord, PartialOrd)] CharacterID);
 
-#[derive(Hash, PartialEq, Eq, Clone, Copy, Debug)]
-pub(crate) enum QueryType {
-    ContactOnly,
-    ContactRoom,
-    LinkingEvent,
-    LinkingIdent,
-    TraverseRoom,
-    ControlEvent,
-    ControlFilter,
-    ResourceEvent,
-    ResourceIdent,
-    User(UserQueryID),
+#[derive(Hash, Ord, PartialOrd, Clone, PartialEq, Eq, Debug)]
+pub struct PoolID {
+    pub(crate) attached_to: EntID,
+    pub(crate) rsrc: RsrcID,
+}
+
+impl PoolID {
+    pub fn new(attached_to: EntID, rsrc: RsrcID) -> Self {
+        Self { attached_to, rsrc }
+    }
+}
+
+#[derive(Hash, Ord, PartialOrd, Clone, PartialEq, Eq, Debug)]
+pub struct RsrcID {
+    idx: usize,
+    name: String,
+}
+
+impl RsrcID {
+    pub fn new(idx: usize, name: String) -> Self {
+        Self { idx, name }
+    }
+    pub fn idx(&self) -> usize {
+        self.idx
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 pub enum Ent {
@@ -64,7 +80,7 @@ pub struct Player {
     pub pos: IVec2,
     pub amt_moved: IVec2,
     pub color: Color,
-    pub inventory: Vec<(RsrcID, Resource)>,
+    pub inventory: Vec<(RsrcID, i16)>,
     pub controls: Vec<(ActionID, KeyCode, bool)>,
 }
 
@@ -94,8 +110,8 @@ impl Player {
         *valid_old = valid;
     }
 
-    pub fn add_inventory_item(&mut self, id: RsrcID, rsrc: Resource) {
-        self.inventory.push((id, rsrc));
+    pub fn add_inventory_item(&mut self, id: RsrcID, val: i16) {
+        self.inventory.push((id, val));
     }
 }
 
@@ -124,7 +140,10 @@ impl Tile {
 }
 
 // characters are fixed
+#[derive(Clone)]
 pub struct Character {
+    /// resource id and starting value
+    pub inventory: Vec<(RsrcID, i16)>,
     pub pos: IVec2,
     pub color: Color,
 }
@@ -132,39 +151,33 @@ pub struct Character {
 impl Character {
     pub fn new() -> Self {
         Self {
+            inventory: Vec::new(),
             pos: IVec2::ZERO,
             color: LIME,
         }
     }
-}
 
-#[derive(Copy, Clone)]
-pub struct Resource {
-    pub val: u16,
-    pub min: u16,
-    pub max: u16,
-}
-
-impl Resource {
-    pub fn new() -> Self {
-        Self {
-            val: 0,
-            min: u16::MIN,
-            max: u16::MAX,
-        }
+    pub fn add_inventory_item(&mut self, id: RsrcID, val: i16) {
+        self.inventory.push((id, val));
     }
 }
 
-use crate::collision::Contact;
 use asterism::control::ControlEvent;
 use asterism::resources::ResourceEvent;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ColEntType {
+    Player,
+    Character(CharacterID),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CollisionEnt {
     Player,
-    Character,
+    Tile(IVec2),
+    Character(CharacterID),
 }
 
 pub type CtrlEvent = ControlEvent<ActionID>;
-pub type ColEvent = Contact;
-pub type RsrcEvent = ResourceEvent<RsrcID>;
+pub type ColEvent = (usize, CollisionEnt, CollisionEnt);
+pub type RsrcEvent = ResourceEvent<PoolID, i16>;

@@ -3,7 +3,8 @@
 //! Control logics communicate that different entities are controlled by different inputs at different times. They map button inputs, AI intentions, network socket messages, etc onto high-level game actions.
 //!
 //! We're currently trying to consider analog as well as digital inputs, but we haven't implemented controller support, so some of these fields don't really make sense yet.
-use crate::{tables::OutputTable, Event, EventType, Logic, Reaction};
+use crate::{Event, EventType, LendingIterator, Logic, Reaction};
+pub use wrapper::*;
 
 /// Information for a key/button press.
 trait Input {
@@ -23,22 +24,26 @@ where
     pub mapping: Vec<Vec<Action<ID, Wrapper::KeyCode>>>,
     /// The values for each keypress in the sets described above.
     pub values: Vec<Vec<Values>>,
+    /// events
+    events: Vec<ControlEvent<ID>>,
     /// An input wrapper
     input_wrapper: Wrapper,
 }
 
 impl<ID, Wrapper> Logic for KeyboardControl<ID, Wrapper>
 where
-    ID: Copy + Eq + Ord,
-    Wrapper: InputWrapper,
+    ID: Copy + Eq + Ord + 'static,
+    Wrapper: InputWrapper + 'static,
 {
     type Event = ControlEvent<ID>;
     type Reaction = ControlReaction<ID, Wrapper::KeyCode>;
 
-    /// for each control locus
+    /// for each mapping/control locus
     type Ident = usize;
-    /// values are only included for reference; modifying values will not change the data in the logic. Not super sure about this type...
-    type IdentData = Vec<Action<ID, Wrapper::KeyCode>>;
+    type IdentData<'logic> = &'logic [Action<ID, Wrapper::KeyCode>];
+    type IdentDataMut<'logic> = &'logic mut [Action<ID, Wrapper::KeyCode>];
+
+    type DataIter<'logic> = CtrlDataIter<'logic, ID, Wrapper> where Self: 'logic;
 
     fn handle_predicate(&mut self, reaction: &Self::Reaction) {
         match reaction {
@@ -58,24 +63,34 @@ where
         }
     }
 
-    fn get_ident_data(&self, ident: Self::Ident) -> Self::IdentData {
-        self.mapping[ident].clone()
+    fn get_ident_data(&self, ident: Self::Ident) -> Self::IdentData<'_> {
+        &self.mapping[ident]
+    }
+    fn get_ident_data_mut(&mut self, ident: Self::Ident) -> Self::IdentDataMut<'_> {
+        &mut self.mapping[ident]
     }
 
-    fn update_ident_data(&mut self, ident: Self::Ident, data: Self::IdentData) {
-        self.mapping[ident] = data;
+    fn data_iter(&mut self) -> Self::DataIter<'_> {
+        Self::DataIter {
+            control: self,
+            count: 0,
+        }
+    }
+    fn events(&self) -> &[Self::Event] {
+        &self.events
     }
 }
 
 impl<ID, Wrapper> KeyboardControl<ID, Wrapper>
 where
-    ID: Copy + Eq + Ord,
-    Wrapper: InputWrapper,
+    ID: Copy + Eq + Ord + 'static,
+    Wrapper: InputWrapper + 'static,
 {
     pub fn new() -> Self {
         Self {
             mapping: Vec::new(),
             values: Vec::new(),
+            events: Vec::new(),
             input_wrapper: Wrapper::new(),
         }
     }
@@ -83,7 +98,9 @@ where
     /// Checks and updates what inputs are being pressed every frame.
     pub fn update(&mut self, events: &Wrapper::InputHelper) {
         self.input_wrapper.clear();
-        for (map, map_values) in self.mapping.iter().zip(self.values.iter_mut()) {
+        self.events.clear();
+
+        for (i, (map, map_values)) in self.mapping.iter().zip(self.values.iter_mut()).enumerate() {
             for (action, mut values) in map.iter().zip(map_values.iter_mut()) {
                 let Action {
                     key_input,
@@ -123,6 +140,30 @@ where
                 *value = (*value + *changed_by)
                     .max(key_input.min())
                     .min(key_input.max());
+                if *changed_by > 0.0 {
+                    self.events.push(ControlEvent {
+                        set: i,
+                        action_id: action.id,
+                        event_type: ControlEventType::KeyPressed,
+                    });
+                } else if *changed_by < 0.0 {
+                    self.events.push(ControlEvent {
+                        set: i,
+                        action_id: action.id,
+                        event_type: ControlEventType::KeyReleased,
+                    });
+                }
+
+                let event_type = if *value != 0.0 {
+                    ControlEventType::KeyHeld
+                } else {
+                    ControlEventType::KeyUnheld
+                };
+                self.events.push(ControlEvent {
+                    set: i,
+                    action_id: action.id,
+                    event_type,
+                });
             }
         }
     }
@@ -159,6 +200,35 @@ where
         }
         self.mapping[locus_idx].push(Action::new(id, keycode, InputType::Digital, valid));
         self.values[locus_idx].push(Values::new());
+    }
+}
+
+pub struct CtrlDataIter<'ctrl, ID, Wrapper>
+where
+    ID: Copy + Eq + Ord + 'static,
+    Wrapper: InputWrapper + 'static,
+{
+    control: &'ctrl mut KeyboardControl<ID, Wrapper>,
+    count: usize,
+}
+
+impl<'ctrl, ID, Wrapper> LendingIterator for CtrlDataIter<'ctrl, ID, Wrapper>
+where
+    ID: Copy + Eq + Ord + 'static,
+    Wrapper: InputWrapper + 'static,
+{
+    type Item<'a> = (<KeyboardControl<ID, Wrapper> as Logic>::Ident, <KeyboardControl<ID, Wrapper> as Logic>::IdentDataMut<'a>) where Self: 'a;
+
+    fn next(&mut self) -> Option<Self::Item<'_>> {
+        self.count += 1;
+        if self.count == self.control.mapping.len() {
+            None
+        } else {
+            Some((
+                self.count - 1,
+                self.control.get_ident_data_mut(self.count - 1),
+            ))
+        }
     }
 }
 
@@ -267,189 +337,129 @@ pub enum ControlEventType {
 
 impl EventType for ControlEventType {}
 
-type QueryIdent<ID, Wrapper> = (
-    <KeyboardControl<ID, Wrapper> as Logic>::Ident,
-    <KeyboardControl<ID, Wrapper> as Logic>::IdentData,
-);
+pub mod wrapper {
+    /// A wrapper to help keep track of input information that preexisting input handlers may not offer, but that we need.
+    pub trait InputWrapper {
+        /// what kind of keycode the InputWrapper will keep track of
+        type KeyCode: Copy + Eq;
+        /// the InputHelper that the engine's input handler uses, ex. Bevy's `bevy_input::Input` or winit_input_helper's `WinitInputHelper`.
+        type InputHelper;
+        fn new() -> Self;
 
-impl<ID: Copy + Eq + Ord, Wrapper: InputWrapper> OutputTable<QueryIdent<ID, Wrapper>>
-    for KeyboardControl<ID, Wrapper>
-{
-    fn get_table(&self) -> Vec<QueryIdent<ID, Wrapper>> {
-        (0..self.mapping.len())
-            .map(|idx| (idx, self.get_ident_data(idx)))
-            .collect()
+        /// clears input information for this frame
+        fn clear(&mut self);
+
+        /// if the key is held or not. If keeping track of current inputs, also logs what keys are being pressed this frame.
+        fn update_held(&mut self, key: &Self::KeyCode, events: &Self::InputHelper) -> bool;
+
+        /// if the key has just been pressed or not
+        fn is_pressed(&self, key: &Self::KeyCode, events: &Self::InputHelper) -> bool;
+
+        /// if the key has just been released or not
+        fn is_released(&self, key: &Self::KeyCode, events: &Self::InputHelper) -> bool;
     }
-}
 
-type QueryEvent<ID, Wrapper> = <KeyboardControl<ID, Wrapper> as Logic>::Event;
-impl<ID: Copy + Eq + Ord, Wrapper: InputWrapper> OutputTable<QueryEvent<ID, Wrapper>>
-    for KeyboardControl<ID, Wrapper>
-{
-    fn get_table(&self) -> Vec<QueryEvent<ID, Wrapper>> {
-        let mut events = Vec::new();
+    use macroquad::prelude::{is_key_down, is_key_pressed, is_key_released, KeyCode as MqKeyCode};
+    /// Macroquad's input handler already correctly handles the information we need, so this is just a wrapper for their functions
+    pub struct MacroquadInputWrapper {}
 
-        for (i, (mapping, values)) in self.mapping.iter().zip(self.values.iter()).enumerate() {
-            for (action, value) in mapping.iter().zip(values.iter()) {
-                if value.changed_by > 0.0 {
-                    let event = ControlEvent {
-                        set: i,
-                        action_id: action.id,
-                        event_type: ControlEventType::KeyPressed,
-                    };
-                    events.push(event);
-                } else if value.changed_by < 0.0 {
-                    let event = ControlEvent {
-                        set: i,
-                        action_id: action.id,
-                        event_type: ControlEventType::KeyReleased,
-                    };
-                    events.push(event);
-                }
+    impl InputWrapper for MacroquadInputWrapper {
+        type KeyCode = MqKeyCode;
+        type InputHelper = ();
+        fn new() -> Self {
+            Self {}
+        }
 
-                if value.value != 0.0 {
-                    let event = ControlEvent {
-                        set: i,
-                        action_id: action.id,
-                        event_type: ControlEventType::KeyHeld,
-                    };
-                    events.push(event);
-                } else {
-                    let event = ControlEvent {
-                        set: i,
-                        action_id: action.id,
-                        event_type: ControlEventType::KeyUnheld,
-                    };
-                    events.push(event);
-                };
+        fn clear(&mut self) {}
+
+        fn update_held(&mut self, key: &MqKeyCode, _events: &()) -> bool {
+            is_key_down(*key)
+        }
+
+        fn is_pressed(&self, key: &MqKeyCode, _events: &()) -> bool {
+            is_key_pressed(*key)
+        }
+
+        fn is_released(&self, key: &MqKeyCode, _events: &()) -> bool {
+            is_key_released(*key)
+        }
+    }
+
+    #[cfg(feature = "winit-render")]
+    use std::collections::BTreeSet;
+    #[cfg(feature = "winit-render")]
+    use winit::event::VirtualKeyCode;
+    #[cfg(feature = "winit-render")]
+    use winit_input_helper::WinitInputHelper;
+
+    /// WinitInputHelper doesn't handle key repeat properly because of key repeat, so track the keys pressed last and this frame.
+    #[cfg(feature = "winit-render")]
+    pub struct WinitInputWrapper {
+        this_frame_keys: BTreeSet<VirtualKeyCode>,
+        last_frame_keys: BTreeSet<VirtualKeyCode>,
+    }
+
+    #[cfg(feature = "winit-render")]
+    impl InputWrapper for WinitInputWrapper {
+        type KeyCode = VirtualKeyCode;
+        type InputHelper = WinitInputHelper;
+
+        fn new() -> Self {
+            Self {
+                this_frame_keys: BTreeSet::new(),
+                last_frame_keys: BTreeSet::new(),
             }
         }
 
-        events
-    }
-}
+        fn clear(&mut self) {
+            self.last_frame_keys = std::mem::take(&mut self.this_frame_keys);
+        }
 
-/// A wrapper to help keep track of input information that preexisting input handlers may not offer, but that we need.
-pub trait InputWrapper {
-    /// what kind of keycode the InputWrapper will keep track of
-    type KeyCode: Copy + Eq;
-    /// the InputHelper that the engine's input handler uses, ex. Bevy's `bevy_input::Input` or winit_input_helper's `WinitInputHelper`.
-    type InputHelper;
-    fn new() -> Self;
+        fn update_held(&mut self, key: &VirtualKeyCode, events: &WinitInputHelper) -> bool {
+            if events.key_held(*key) {
+                self.this_frame_keys.insert(*key);
+                return true;
+            }
+            false
+        }
 
-    /// clears input information for this frame
-    fn clear(&mut self);
+        fn is_pressed(&self, key: &VirtualKeyCode, _events: &WinitInputHelper) -> bool {
+            self.this_frame_keys.contains(key) && !self.last_frame_keys.contains(key)
+        }
 
-    /// if the key is held or not. If keeping track of current inputs, also logs what keys are being pressed this frame.
-    fn update_held(&mut self, key: &Self::KeyCode, events: &Self::InputHelper) -> bool;
-
-    /// if the key has just been pressed or not
-    fn is_pressed(&self, key: &Self::KeyCode, events: &Self::InputHelper) -> bool;
-
-    /// if the key has just been released or not
-    fn is_released(&self, key: &Self::KeyCode, events: &Self::InputHelper) -> bool;
-}
-
-use macroquad::prelude::{is_key_down, is_key_pressed, is_key_released, KeyCode as MqKeyCode};
-/// Macroquad's input handler already correctly handles the information we need, so this is just a wrapper for their functions
-pub struct MacroquadInputWrapper {}
-
-impl InputWrapper for MacroquadInputWrapper {
-    type KeyCode = MqKeyCode;
-    type InputHelper = ();
-    fn new() -> Self {
-        Self {}
-    }
-
-    fn clear(&mut self) {}
-
-    fn update_held(&mut self, key: &MqKeyCode, _events: &()) -> bool {
-        is_key_down(*key)
-    }
-
-    fn is_pressed(&self, key: &MqKeyCode, _events: &()) -> bool {
-        is_key_pressed(*key)
-    }
-
-    fn is_released(&self, key: &MqKeyCode, _events: &()) -> bool {
-        is_key_released(*key)
-    }
-}
-
-#[cfg(feature = "winit-render")]
-use std::collections::BTreeSet;
-#[cfg(feature = "winit-render")]
-use winit::event::VirtualKeyCode;
-#[cfg(feature = "winit-render")]
-use winit_input_helper::WinitInputHelper;
-
-/// WinitInputHelper doesn't handle key repeat properly because of key repeat, so track the keys pressed last and this frame.
-#[cfg(feature = "winit-render")]
-pub struct WinitInputWrapper {
-    this_frame_keys: BTreeSet<VirtualKeyCode>,
-    last_frame_keys: BTreeSet<VirtualKeyCode>,
-}
-
-#[cfg(feature = "winit-render")]
-impl InputWrapper for WinitInputWrapper {
-    type KeyCode = VirtualKeyCode;
-    type InputHelper = WinitInputHelper;
-
-    fn new() -> Self {
-        Self {
-            this_frame_keys: BTreeSet::new(),
-            last_frame_keys: BTreeSet::new(),
+        fn is_released(&self, key: &VirtualKeyCode, events: &WinitInputHelper) -> bool {
+            events.key_released(*key)
         }
     }
 
-    fn clear(&mut self) {
-        self.last_frame_keys = std::mem::take(&mut self.this_frame_keys);
-    }
+    #[cfg(feature = "bevy-engine")]
+    use bevy_input::{keyboard::KeyCode as BevyKeyCode, Input as BevyInput};
 
-    fn update_held(&mut self, key: &VirtualKeyCode, events: &WinitInputHelper) -> bool {
-        if events.key_held(*key) {
-            self.this_frame_keys.insert(*key);
-            return true;
+    #[cfg(feature = "bevy-engine")]
+    /// Bevy's input handler already correctly handles the information we need, so this is just a wrapper for their functions
+    pub struct BevyInputWrapper;
+
+    #[cfg(feature = "bevy-engine")]
+    impl InputWrapper for BevyInputWrapper {
+        type KeyCode = BevyKeyCode;
+        type InputHelper = BevyInput<BevyKeyCode>;
+
+        fn new() -> Self {
+            Self
         }
-        false
-    }
 
-    fn is_pressed(&self, key: &VirtualKeyCode, _events: &WinitInputHelper) -> bool {
-        self.this_frame_keys.contains(key) && !self.last_frame_keys.contains(key)
-    }
+        fn clear(&mut self) {}
 
-    fn is_released(&self, key: &VirtualKeyCode, events: &WinitInputHelper) -> bool {
-        events.key_released(*key)
-    }
-}
+        fn update_held(&mut self, key: &BevyKeyCode, events: &BevyInput<BevyKeyCode>) -> bool {
+            events.pressed(*key)
+        }
 
-#[cfg(feature = "bevy-engine")]
-use bevy_input::{keyboard::KeyCode as BevyKeyCode, Input as BevyInput};
+        fn is_pressed(&self, key: &BevyKeyCode, events: &BevyInput<BevyKeyCode>) -> bool {
+            events.just_pressed(*key)
+        }
 
-#[cfg(feature = "bevy-engine")]
-/// Bevy's input handler already correctly handles the information we need, so this is just a wrapper for their functions
-pub struct BevyInputWrapper;
-
-#[cfg(feature = "bevy-engine")]
-impl InputWrapper for BevyInputWrapper {
-    type KeyCode = BevyKeyCode;
-    type InputHelper = BevyInput<BevyKeyCode>;
-
-    fn new() -> Self {
-        Self
-    }
-
-    fn clear(&mut self) {}
-
-    fn update_held(&mut self, key: &BevyKeyCode, events: &BevyInput<BevyKeyCode>) -> bool {
-        events.pressed(*key)
-    }
-
-    fn is_pressed(&self, key: &BevyKeyCode, events: &BevyInput<BevyKeyCode>) -> bool {
-        events.just_pressed(*key)
-    }
-
-    fn is_released(&self, key: &BevyKeyCode, events: &BevyInput<BevyKeyCode>) -> bool {
-        events.just_released(*key)
+        fn is_released(&self, key: &BevyKeyCode, events: &BevyInput<BevyKeyCode>) -> bool {
+            events.just_released(*key)
+        }
     }
 }

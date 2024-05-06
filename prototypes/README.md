@@ -9,6 +9,10 @@ These engines attempt to compose logics to form an engine rather than an individ
 - `paddles-engine`: offers the types Paddle (control, collision), Wall (collision), Ball (collision, physics), Score (resource). Attempts to make the logics own all game state data. Examples: paddles, breakout (run with ex. `cargo run --bin paddles`)
 - `boxsy`: fake Bitsy. Offers the types Player (control, collision), Resource (resource), and Tile (collision). Allows the user to create rooms and link between locations in rooms. Examples: extreme-dungeon-crawler
 
+# Unsupported prototypes
+
+The prototypes in the `old/` folder are no longer the focus of the project, and aren't maintained!! They probably won't run!!
+
 ## Rendering and Communication Channels
 
 These games use a json file to define sprite animations, which play based on information given by logics. They don't use the engine structure described above. Both are moderately to mildly broken.
@@ -16,9 +20,6 @@ These games use a json file to define sprite animations, which play based on inf
 - `clowder`: game about herding cats
 - `apple-catching`: Kaboom!-like game about catching falling apples
 
-# Unsupported prototypes
-
-The prototypes in the `old/` folder no longer compile.
 
 ## Paddles Variations
 
@@ -26,7 +27,7 @@ Paddles variations, mostly using control, physics, resource, and collision logic
 
 - `paddles-macroquad`: Paddles rewrite with macroquad for rendering to move away from framebuffer graphics. Player 1: Q - up, A - down, W - serve; player 2: O - up, L - down, I - serve.
 - `air_hockey`: Paddles, but flipped 180 degrees and with both horizontal and vertical movement. For an updated version of this game, see `clowder`.
-- `breakout`: remake of Atari Breakout. Left and right to move the paddle, space to serve. Trans rights :)
+- `breakout-game`: remake of Atari Breakout. Left and right to move the paddle, space to serve. Trans rights :)
 - `trick-ball`: when the ball hits a paddle, it slows down, and when it hits the top and bottom walls, it speeds up.
 - `trick-paddle`: when the ball hits a paddle, the paddle speeds up.
 - `wall-breaker`: Paddles but there are walls, and you break the walls when you hit them.

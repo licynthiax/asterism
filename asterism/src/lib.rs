@@ -6,44 +6,61 @@
 //!
 //! The descriptions of logics in the modules are lightly modified from Prof Osborn's dissertation.
 //!
-//! Requires at least Rust 1.51---if this doesn't compile, update your rustc.
+//! Requires at least Rust 1.68---if this doesn't compile, update your rustc.
+
 #![allow(clippy::new_without_default)]
 #![allow(clippy::upper_case_acronyms)]
-// pub mod animation;
 pub mod collision;
 pub mod control;
 pub mod entity_state;
-pub mod graph;
 pub mod linking;
 pub mod physics;
 pub mod resources;
-pub mod tables;
 
-pub use tables::OutputTable;
+pub mod graph;
+pub mod graphics;
+pub mod lending_iterator;
+
+pub use lending_iterator::LendingIterator;
 
 /// An operational logic
-pub trait Logic:
-    OutputTable<(<Self as Logic>::Ident, <Self as Logic>::IdentData)>
-    + OutputTable<<Self as Logic>::Event>
-{
+pub trait Logic {
     /// the events that this logic can generate
-    type Event: Event + Copy;
+    type Event: Event + Clone;
     /// the reactions that this logic can act on
     type Reaction: Reaction;
 
     /// a single unit/entity within the logic
-    type Ident: Copy;
+    type Ident: Clone;
     /// the data of the logic associated with its identity (`<Self as Logic>::Ident`).
-    type IdentData: Clone;
+    type IdentData<'logic>
+    where
+        Self: 'logic;
+    type IdentDataMut<'logic>
+    where
+        Self: 'logic;
 
-    /// processes the reaction if a predicate condition is met
+    type DataIter<'logic>: LendingIterator<
+        Item<'logic> = (
+            <Self as Logic>::Ident,
+            <Self as Logic>::IdentDataMut<'logic>,
+        ),
+    >
+    where
+        Self: 'logic;
+
+    /// processes the reaction if a condition is met
     fn handle_predicate(&mut self, reaction: &Self::Reaction);
 
-    /// exposes the data associated with a particular ""entity"" of the logic. NOTE that modifying the data returned here does NOT change the logic's data!!!
-    fn get_ident_data(&self, ident: Self::Ident) -> Self::IdentData;
+    /// exposes the data associated with a particular ""entity"" of the logic.
+    fn get_ident_data(&self, ident: Self::Ident) -> Self::IdentData<'_>;
+    /// exposes the data associated with a particular ""entity"" of the logic.
+    fn get_ident_data_mut(&mut self, ident: Self::Ident) -> Self::IdentDataMut<'_>;
 
-    /// updates the data of a unit of the logic
-    fn update_ident_data(&mut self, ident: Self::Ident, data: Self::IdentData);
+    /// returns a [lending iterator](lending_iterator::LendingIterator) for the data of the logic
+    fn data_iter(&mut self) -> Self::DataIter<'_>;
+    /// returns an array slice for the events of the logic
+    fn events(&self) -> &[Self::Event];
 }
 
 /// An event produced by the logic. Holds both the data associated with the event and information about what the event is---these should be separated for easier matching.

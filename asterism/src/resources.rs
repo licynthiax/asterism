@@ -2,60 +2,75 @@
 //!
 //! Resource logics communicate that generic or specific resources can be created, destroyed, converted, or transferred between abstract or concrete locations. They create, destroy, and exchange (usually) discrete quantities of generic or specific resources in or between abstract or concrete locations on demand or over time, and trigger other actions when these transactions take place.
 
-use crate::{tables::OutputTable, Event, EventType, Logic, Reaction};
+use crate::{Event, EventType, LendingIterator, Logic, Reaction};
+use num_traits::{Num, Signed};
 use std::collections::BTreeMap;
 use std::fmt::Debug;
-use std::ops::{Add, AddAssign};
+
+pub struct PoolValues<Value> {
+    pub val: Value,
+    pub min: Value,
+    pub max: Value,
+}
 
 /// A resource logic that queues transactions, then applies them all at once when updating.
 pub struct QueuedResources<ID, Value>
 where
-    ID: Copy + Ord + Debug,
-    Value: Add<Output = Value> + AddAssign + Ord + Copy,
+    ID: Clone + Ord + Debug,
+    Value: Num + Signed + Copy + PartialOrd,
 {
-    /// The items involved, and their values.
-    pub items: BTreeMap<ID, (Value, Value, Value)>, // value, min, max
+    /// The items involved, and their values, as a tuple of (actual value, minimum value, maximum value).
+    pub items: BTreeMap<ID, PoolValues<Value>>,
     /// Each transaction is a list of items involved in the transaction and the amount they're being changed.
-    pub transactions: Vec<(ID, Transaction<Value>)>,
-    /// A Vec of all transactions and if they were able to be completed or not. If yes, supply a Vec of the IDs of successful transactions; if no, supply the ID of the pool that caused the error and a reason (see [ResourceError]).
-    pub completed: Vec<Result<ID, (ID, ResourceError)>>,
+    pub transactions: Vec<(ID, Transaction<Value, ID>)>,
+    /// A Vec of all transactions and if they were able to be completed or not. If not, also report an error (see [ResourceEvent] and [ResourceError]).
+    pub completed: Vec<ResourceEvent<ID, Value>>,
 }
 
 impl<ID, Value> Logic for QueuedResources<ID, Value>
 where
-    ID: Copy + Ord + Debug,
-    Value: Add<Output = Value> + AddAssign + Ord + Copy,
+    ID: Clone + Ord + Debug,
+    Value: Num + Signed + Copy + PartialOrd,
 {
-    type Event = ResourceEvent<ID>;
+    type Event = ResourceEvent<ID, Value>;
     type Reaction = ResourceReaction<ID, Value>;
 
     type Ident = ID;
-    type IdentData = (Value, Value, Value);
+    type IdentData<'rsrc> = &'rsrc PoolValues<Value> where Self: 'rsrc;
+    type IdentDataMut<'rsrc> = &'rsrc mut PoolValues<Value> where Self: 'rsrc;
+
+    type DataIter<'iter> = RsrcDataIter<'iter, ID, Value> where Self: 'iter;
 
     fn handle_predicate(&mut self, reaction: &Self::Reaction) {
-        self.transactions.push(*reaction);
+        self.transactions.push(reaction.clone());
     }
 
-    fn get_ident_data(&self, ident: Self::Ident) -> Self::IdentData {
-        *self
-            .items
+    fn get_ident_data(&self, ident: Self::Ident) -> Self::IdentData<'_> {
+        self.items
             .get(&ident)
             .unwrap_or_else(|| panic!("requested pool {:?} doesn't exist in resource logic", ident))
     }
-
-    fn update_ident_data(&mut self, ident: Self::Ident, data: Self::IdentData) {
-        let vals = self
-            .items
+    fn get_ident_data_mut(&mut self, ident: Self::Ident) -> Self::IdentDataMut<'_> {
+        self.items
             .get_mut(&ident)
-            .unwrap_or_else(|| panic!("pool {:?} not found", ident));
-        *vals = data;
+            .unwrap_or_else(|| panic!("requested pool {:?} doesn't exist in resource logic", ident))
+    }
+
+    fn data_iter(&mut self) -> Self::DataIter<'_> {
+        RsrcDataIter {
+            resources: self.items.iter_mut(),
+        }
+    }
+
+    fn events(&self) -> &[Self::Event] {
+        &self.completed
     }
 }
 
 impl<ID, Value> QueuedResources<ID, Value>
 where
-    ID: Copy + Ord + Debug,
-    Value: Add<Output = Value> + AddAssign + Ord + Copy,
+    ID: Clone + Ord + Debug,
+    Value: Num + Signed + Copy + PartialOrd,
 {
     pub fn new() -> Self {
         Self {
@@ -69,21 +84,52 @@ where
     pub fn update(&mut self) {
         self.completed.clear();
 
-        for exchange in self.transactions.iter() {
-            let (item_type, change) = exchange;
+        for (id, transaction) in self.transactions.iter() {
+            let err_event = |pool, transaction, err| ResourceEvent {
+                pool,
+                transaction,
+                event_type: ResourceEventType::TransactionUnsuccessful(err),
+            };
+            if let Transaction::Trade(amt, other) = transaction {
+                let zero: Value = num_traits::identities::zero();
+                // check if first transaction is possible
+                if let Err(err) = self.is_possible(id, &Transaction::Change(zero - *amt)) {
+                    self.completed
+                        .push(err_event(id.clone(), transaction.clone(), err));
+                    continue;
+                }
+                // check if second is possible
+                if let Err(err) = self.is_possible(other, &Transaction::Change(*amt)) {
+                    self.completed
+                        .push(err_event(id.clone(), transaction.clone(), err));
+                    continue;
+                }
 
-            if let Err(err) = self.is_possible(item_type, change) {
-                self.completed.push(Err(err));
+                let PoolValues { val: val_i, .. } = self.items.get_mut(id).unwrap();
+                *val_i = *val_i - *amt;
+                let PoolValues { val: val_j, .. } = self.items.get_mut(other).unwrap();
+                *val_j = *val_j + *amt;
+                self.completed.push(ResourceEvent {
+                    pool: id.clone(),
+                    transaction: transaction.clone(),
+                    event_type: ResourceEventType::PoolUpdated,
+                });
                 continue;
             }
 
-            let (val, min, max) = self.items.get_mut(&item_type).unwrap();
-            match change {
+            if let Err(err) = self.is_possible(id, transaction) {
+                self.completed
+                    .push(err_event(id.clone(), transaction.clone(), err));
+                continue;
+            }
+
+            let PoolValues { val, min, max } = self.items.get_mut(id).unwrap();
+            match transaction {
                 Transaction::Change(amt) => {
-                    *val += *amt;
+                    *val = *val + *amt;
                 }
                 Transaction::Set(amt) => {
-                    *val = *amt;
+                    *val = *val + *amt;
                 }
                 Transaction::SetMax(new_max) => {
                     *max = *new_max;
@@ -91,8 +137,13 @@ where
                 Transaction::SetMin(new_min) => {
                     *min = *new_min;
                 }
+                _ => {}
             }
-            self.completed.push(Ok(*item_type));
+            self.completed.push(ResourceEvent {
+                pool: id.clone(),
+                transaction: transaction.clone(),
+                event_type: ResourceEventType::PoolUpdated,
+            });
         }
         self.transactions.clear();
     }
@@ -101,15 +152,15 @@ where
     fn is_possible(
         &self,
         item_type: &ID,
-        transaction: &Transaction<Value>,
-    ) -> Result<(), (ID, ResourceError)> {
-        if let Some((value, min, max)) = self.items.get(item_type) {
+        transaction: &Transaction<Value, ID>,
+    ) -> Result<(), ResourceError> {
+        if let Some(PoolValues { val, min, max }) = self.items.get(item_type) {
             match transaction {
                 Transaction::Change(amt) => {
-                    if *value + *amt > *max {
-                        Err((*item_type, ResourceError::TooBig))
-                    } else if *value + *amt < *min {
-                        Err((*item_type, ResourceError::TooSmall))
+                    if *val + *amt > *max {
+                        Err(ResourceError::TooBig)
+                    } else if *val + *amt < *min {
+                        Err(ResourceError::TooSmall)
                     } else {
                         Ok(())
                     }
@@ -117,22 +168,24 @@ where
                 _ => Ok(()),
             }
         } else {
-            Err((*item_type, ResourceError::PoolNotFound))
+            Err(ResourceError::PoolNotFound)
         }
     }
 
     /// Gets the value of the item based on its ID.
     pub fn get_value_by_itemtype(&self, item_type: &ID) -> Option<Value> {
-        self.items.get(item_type).map(|(val, ..)| *val)
+        self.items.get(item_type).map(|PoolValues { val, .. }| *val)
     }
 }
 
 /// A transaction holding the amount the value should change by.
-#[derive(Clone, Copy)]
-pub enum Transaction<Value>
+#[derive(Clone, Eq, PartialEq)]
+pub enum Transaction<Value, Ident>
 where
-    Value: Add + AddAssign,
+    Value: Num + Signed + Copy + PartialOrd,
+    Ident: Ord + Debug,
 {
+    Trade(Value, Ident),
     Change(Value),
     Set(Value),
     SetMax(Value),
@@ -147,11 +200,16 @@ pub enum ResourceError {
     TooSmall,
 }
 
-pub type ResourceReaction<ID, Value> = (ID, Transaction<Value>);
+pub type ResourceReaction<ID, Value> = (ID, Transaction<Value, ID>);
 
-#[derive(PartialEq, Eq, Clone, Copy)]
-pub struct ResourceEvent<ID> {
+#[derive(PartialEq, Eq, Clone)]
+pub struct ResourceEvent<ID, Value>
+where
+    Value: Num + Signed + Copy + PartialOrd,
+    ID: Clone + Ord + Debug,
+{
     pub pool: ID,
+    pub transaction: Transaction<Value, ID>,
     pub event_type: ResourceEventType,
 }
 
@@ -163,51 +221,226 @@ pub enum ResourceEventType {
 
 impl EventType for ResourceEventType {}
 
-impl<ID: Ord, Value: Add + AddAssign> Reaction for ResourceReaction<ID, Value> {}
+impl<ID, Value> Reaction for ResourceReaction<ID, Value>
+where
+    ID: Ord + Clone + Debug,
+    Value: Num + Signed + Copy + PartialOrd,
+{
+}
 
-impl<ID: Ord> Event for ResourceEvent<ID> {
+impl<ID, Value> Event for ResourceEvent<ID, Value>
+where
+    ID: Ord + Clone + Debug,
+    Value: Num + Signed + Copy + PartialOrd,
+{
     type EventType = ResourceEventType;
     fn get_type(&self) -> &Self::EventType {
         &self.event_type
     }
 }
 
-type QueryIdent<ID, Value> = (
-    <QueuedResources<ID, Value> as Logic>::Ident,
-    <QueuedResources<ID, Value> as Logic>::IdentData,
-);
-
-impl<ID, Value> OutputTable<QueryIdent<ID, Value>> for QueuedResources<ID, Value>
+pub struct RsrcDataIter<'iter, ID, Value>
 where
-    ID: Copy + Ord + Debug,
-    Value: Add<Output = Value> + AddAssign + Ord + Copy,
+    ID: Clone + Ord + Debug,
+    Value: Num + Signed,
 {
-    fn get_table(&self) -> Vec<QueryIdent<ID, Value>> {
-        self.items
-            .keys()
-            .map(|id| (*id, self.get_ident_data(*id)))
-            .collect()
+    resources: std::collections::btree_map::IterMut<'iter, ID, PoolValues<Value>>,
+}
+
+impl<'iter, ID, Value> LendingIterator for RsrcDataIter<'iter, ID, Value>
+where
+    ID: Clone + Ord + Debug,
+    Value: Num + Signed + Copy + PartialOrd,
+{
+    type Item<'a> = (
+        <QueuedResources<ID, Value> as Logic>::Ident,
+        <QueuedResources<ID, Value> as Logic>::IdentDataMut<'a>,
+    ) where Self: 'a;
+
+    fn next(&mut self) -> Option<Self::Item<'_>> {
+        self.resources.next().map(|(id, vals)| (id.clone(), vals))
     }
 }
 
-impl<ID, Value> OutputTable<ResourceEvent<ID>> for QueuedResources<ID, Value>
+/// An instant resource logic updates as it receives reactions and produces events immediately, rather than at the end of each event loop.
+pub struct InstantResources<ID, Value>
 where
-    ID: Copy + Ord + Debug,
-    Value: Add<Output = Value> + AddAssign + Ord + Copy,
+    ID: Clone + Ord + Debug,
+    Value: Num + Signed + Copy + PartialOrd,
 {
-    fn get_table(&self) -> Vec<ResourceEvent<ID>> {
-        self.completed
-            .iter()
-            .map(|completed| match completed {
-                Ok(id) => ResourceEvent {
-                    pool: *id,
-                    event_type: ResourceEventType::PoolUpdated,
-                },
-                Err((id, err)) => ResourceEvent {
-                    pool: *id,
-                    event_type: ResourceEventType::TransactionUnsuccessful(*err),
-                },
-            })
-            .collect()
+    /// The items involved and their values.
+    pub items: BTreeMap<ID, PoolValues<Value>>,
+    /// A Vec of all transactions and if they were able to be completed or not. If not, also report an error (see [ResourceEvent] and [ResourceError]).
+    pub completed: Vec<ResourceEvent<ID, Value>>,
+}
+
+impl<ID, Value> InstantResources<ID, Value>
+where
+    ID: Clone + Ord + Debug,
+    Value: Num + Signed + PartialOrd + Copy + PartialOrd,
+{
+    pub fn new() -> Self {
+        Self {
+            items: BTreeMap::new(),
+            completed: Vec::new(),
+        }
+    }
+
+    /// update function-- clears events once per game loop
+    pub fn update(&mut self) {
+        self.completed.clear();
+    }
+
+    /// Checks if the transaction is possible or not
+    fn is_possible(
+        &self,
+        item_type: &ID,
+        transaction: &Transaction<Value, ID>,
+    ) -> Result<(), ResourceError> {
+        if let Some(PoolValues { val, min, max }) = self.items.get(item_type) {
+            match transaction {
+                Transaction::Change(amt) => {
+                    if *val + *amt > *max {
+                        Err(ResourceError::TooBig)
+                    } else if *val + *amt < *min {
+                        Err(ResourceError::TooSmall)
+                    } else {
+                        Ok(())
+                    }
+                }
+                _ => Ok(()),
+            }
+        } else {
+            Err(ResourceError::PoolNotFound)
+        }
+    }
+
+    /// Gets the value of the item based on its ID.
+    pub fn get_value_by_itemtype(&self, item_type: &ID) -> Option<Value> {
+        self.items.get(item_type).map(|PoolValues { val, .. }| *val)
+    }
+}
+
+impl<ID, Value> Logic for InstantResources<ID, Value>
+where
+    ID: Clone + Ord + Debug,
+    Value: Num + Signed + Copy + PartialOrd,
+{
+    type Event = ResourceEvent<ID, Value>;
+    type Reaction = ResourceReaction<ID, Value>;
+
+    type Ident = ID;
+    type IdentData<'a> = &'a PoolValues<Value> where Self: 'a;
+    type IdentDataMut<'a> = &'a mut PoolValues<Value> where Self: 'a;
+
+    type DataIter<'a> = InstRsrcDataIter<'a, ID, Value> where Self: 'a;
+
+    fn handle_predicate(&mut self, reaction: &Self::Reaction) {
+        let (item_type, change) = reaction;
+        let err_event = |pool, transaction, err| ResourceEvent {
+            pool,
+            transaction,
+            event_type: ResourceEventType::TransactionUnsuccessful(err),
+        };
+
+        if let Transaction::Trade(amt, to) = change {
+            let zero: Value = num_traits::identities::zero();
+            // check if first transaction is possible
+            if let Err(err) = self.is_possible(item_type, &Transaction::Change(zero - *amt)) {
+                self.completed
+                    .push(err_event(item_type.clone(), change.clone(), err));
+                return;
+            }
+            // check if second is possible
+            if let Err(err) = self.is_possible(to, &Transaction::Change(*amt)) {
+                self.completed
+                    .push(err_event(item_type.clone(), change.clone(), err));
+                return;
+            }
+
+            let PoolValues { val: val_i, .. } = self.items.get_mut(item_type).unwrap();
+            *val_i = *val_i - *amt;
+            let PoolValues { val: val_j, .. } = self.items.get_mut(to).unwrap();
+            *val_j = *val_j + *amt;
+            self.completed.push(ResourceEvent {
+                pool: item_type.clone(),
+                transaction: change.clone(),
+                event_type: ResourceEventType::PoolUpdated,
+            });
+            return;
+        }
+
+        if let Err(err) = self.is_possible(item_type, change) {
+            self.completed
+                .push(err_event(item_type.clone(), change.clone(), err));
+            return;
+        }
+
+        let PoolValues { val, min, max } = self.items.get_mut(item_type).unwrap();
+        match change {
+            Transaction::Change(amt) => {
+                *val = *val + *amt;
+            }
+            Transaction::Set(amt) => {
+                *val = *amt;
+            }
+            Transaction::SetMax(new_max) => {
+                *max = *new_max;
+            }
+            Transaction::SetMin(new_min) => {
+                *min = *new_min;
+            }
+            Transaction::Trade(_, _) => {}
+        }
+        self.completed.push(ResourceEvent {
+            pool: item_type.clone(),
+            transaction: change.clone(),
+            event_type: ResourceEventType::PoolUpdated,
+        });
+    }
+
+    // dislike this panic. is it reasonable to put an option on the type? oh ugh i don't like the way these tables work
+    fn get_ident_data(&self, ident: Self::Ident) -> Self::IdentData<'_> {
+        self.items
+            .get(&ident)
+            .unwrap_or_else(|| panic!("requested pool {:?} doesn't exist in resource logic", ident))
+    }
+    fn get_ident_data_mut(&mut self, ident: Self::Ident) -> Self::IdentDataMut<'_> {
+        self.items
+            .get_mut(&ident)
+            .unwrap_or_else(|| panic!("requested pool {:?} doesn't exist in resource logic", ident))
+    }
+
+    fn data_iter(&mut self) -> Self::DataIter<'_> {
+        InstRsrcDataIter {
+            resources: self.items.iter_mut(),
+        }
+    }
+
+    fn events(&self) -> &[Self::Event] {
+        &self.completed
+    }
+}
+
+pub struct InstRsrcDataIter<'iter, ID, Value>
+where
+    ID: Clone + Ord + Debug,
+    Value: Num + Signed,
+{
+    resources: std::collections::btree_map::IterMut<'iter, ID, PoolValues<Value>>,
+}
+
+impl<'iter, ID, Value> LendingIterator for InstRsrcDataIter<'iter, ID, Value>
+where
+    ID: Clone + Ord + Debug,
+    Value: Num + Signed + Copy + PartialOrd,
+{
+    type Item<'a> = (
+        <InstantResources<ID, Value> as Logic>::Ident,
+        <InstantResources<ID, Value> as Logic>::IdentDataMut<'a>,
+    ) where Self: 'a;
+
+    fn next(&mut self) -> Option<Self::Item<'_>> {
+        self.resources.next().map(|(id, vals)| (id.clone(), vals))
     }
 }

@@ -1,179 +1,262 @@
-use std::rc::Rc;
+use crate::{types::*, Ent, EntID, EntType};
+use asterism::Logic;
+use macroquad::math::Vec2;
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub enum EngineCtrlEvent {
+    MovePaddle(PaddleID, ActionID),
+    ServePressed(PaddleID, ActionID),
+}
+
+pub enum EngineCollisionEvent {
+    Match(EntityMatch, EntityMatch),
+    Filter(Box<dyn Fn(EntID, EntID) -> bool>),
+}
+
+pub enum EntityMatch {
+    ByID(EntID),
+    ByType(EntType),
+    All,
+    Filter(Box<dyn Fn(EntID) -> bool>),
+}
+
+impl std::fmt::Debug for EntityMatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EntityMatch::ByID(id) => f.write_fmt(format_args!("EntityMatch::ByID({:?})", id)),
+            EntityMatch::ByType(ty) => f.write_fmt(format_args!("EntityMatch::ByID({:?})", ty)),
+            EntityMatch::All => f.write_str("EntityMatch::All"),
+            EntityMatch::Filter(_) => f.write_str("EntityMatch::Filter(_)"),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub enum EngineRsrcEvent {
+    ScoreIncreased(ScoreID),
+    ScoreReset(ScoreID),
+    ScoreEquals(ScoreID, i16),
+}
+
+#[derive(Debug)]
+pub enum EngineAction {
+    // can only bounce between balls, walls, and paddles
+    BounceBall(BallID, Option<crate::EntID>),
+    SetBallVel(BallID, Vec2),
+    SetBallPos(BallID, Vec2),
+    SetPaddlePos(PaddleID, Vec2),
+    MovePaddleBy(PaddleID, Vec2),
+    SetKeyValid(PaddleID, ActionID),
+    SetKeyInvalid(PaddleID, ActionID),
+    ChangeScoreBy(ScoreID, i16),
+    ChangeScore(ScoreID, i16),
+    RemoveEntity(Option<EntityMatch>),
+    AddEntity(Ent),
+}
+
+impl EngineAction {
+    pub(crate) fn perform_action(&self, state: &mut crate::State, logics: &mut crate::Logics) {
+        match self {
+            Self::BounceBall(_, None) => {} // no entity to be bounced off of
+            Self::BounceBall(ball, Some(ent)) => {
+                let ball_idx = state.get_col_idx((*ball).into());
+                let ent_idx = state.get_col_idx(*ent);
+
+                let sides_touched = logics.collision.sides_touched(ball_idx, ent_idx);
+                let vals = logics.physics.get_ident_data_mut(ball.idx());
+                if sides_touched.y != 0.0 {
+                    vals.vel.y *= -1.0;
+                }
+                if sides_touched.x != 0.0 {
+                    vals.vel.x *= -1.0;
+                }
+            }
+            Self::SetBallPos(ball, pos) => {
+                logics
+                    .physics
+                    .handle_predicate(&crate::PhysicsReaction::SetPos(ball.idx(), *pos));
+                let col_idx = state.get_col_idx((*ball).into());
+                logics
+                    .collision
+                    .handle_predicate(&crate::CollisionReaction::SetCenter(col_idx, *pos));
+            }
+            Self::SetBallVel(ball, vel) => {
+                logics
+                    .physics
+                    .handle_predicate(&crate::PhysicsReaction::SetVel(ball.idx(), *vel));
+            }
+            Self::ChangeScore(score, val) => {
+                logics.resources.handle_predicate(&(
+                    crate::RsrcPool::Score(*score),
+                    asterism::resources::Transaction::Set(*val),
+                ));
+            }
+            Self::ChangeScoreBy(score, val) => {
+                logics.resources.handle_predicate(&(
+                    crate::RsrcPool::Score(*score),
+                    asterism::resources::Transaction::Change(*val),
+                ));
+            }
+            Self::SetPaddlePos(paddle, pos) => {
+                let col_idx = state.get_col_idx((*paddle).into());
+                logics
+                    .collision
+                    .handle_predicate(&crate::CollisionReaction::SetCenter(col_idx, *pos));
+            }
+            Self::MovePaddleBy(paddle, delta) => {
+                let col_idx = state.get_col_idx((*paddle).into());
+                let new_pos = *logics.collision.get_ident_data(col_idx).center + *delta;
+                logics
+                    .collision
+                    .handle_predicate(&crate::CollisionReaction::SetVel(col_idx, *delta));
+                logics
+                    .collision
+                    .handle_predicate(&crate::CollisionReaction::SetCenter(col_idx, new_pos))
+            }
+            Self::SetKeyValid(set, action) => {
+                logics
+                    .control
+                    .handle_predicate(&crate::ControlReaction::SetKeyValid(set.idx(), *action));
+            }
+            Self::SetKeyInvalid(set, action) => {
+                logics
+                    .control
+                    .handle_predicate(&crate::ControlReaction::SetKeyInvalid(set.idx(), *action));
+            }
+            Self::RemoveEntity(None) => {} // no entity to remove
+            Self::RemoveEntity(Some(match_ent)) => match match_ent {
+                EntityMatch::ByID(id) => state.queue_remove(*id),
+                EntityMatch::ByType(ty) => match ty {
+                    EntType::Wall => {
+                        for wall in state.walls.clone() {
+                            state.queue_remove(wall.into());
+                        }
+                    }
+                    EntType::Paddle => {
+                        for paddle in state.paddles.clone() {
+                            state.queue_remove(paddle.into());
+                        }
+                    }
+                    EntType::Ball => {
+                        for ball in state.balls.clone() {
+                            state.queue_remove(ball.into());
+                        }
+                    }
+                    EntType::Score => {
+                        for score in state.scores.clone() {
+                            state.queue_remove(score.into());
+                        }
+                    }
+                },
+                EntityMatch::All => {
+                    for wall in state.walls.clone() {
+                        state.queue_remove(wall.into());
+                    }
+                    for paddle in state.paddles.clone() {
+                        state.queue_remove(paddle.into());
+                    }
+                    for ball in state.balls.clone() {
+                        state.queue_remove(ball.into());
+                    }
+                    for score in state.scores.clone() {
+                        state.queue_remove(score.into());
+                    }
+                }
+                EntityMatch::Filter(filter) => {
+                    for wall in state
+                        .walls
+                        .clone()
+                        .into_iter()
+                        .map(|wall| wall.into())
+                        .filter(|wall| filter(*wall))
+                    {
+                        state.queue_remove(wall);
+                    }
+                    for paddle in state
+                        .paddles
+                        .clone()
+                        .into_iter()
+                        .map(|paddle| paddle.into())
+                        .filter(|paddle| filter(*paddle))
+                    {
+                        state.queue_remove(paddle);
+                    }
+                    for ball in state
+                        .balls
+                        .clone()
+                        .into_iter()
+                        .map(|ball| ball.into())
+                        .filter(|ball| filter(*ball))
+                    {
+                        state.queue_remove(ball);
+                    }
+                    for score in state
+                        .scores
+                        .clone()
+                        .into_iter()
+                        .map(|score| score.into())
+                        .filter(|score| filter(*score))
+                    {
+                        state.queue_remove(score);
+                    }
+                }
+            },
+            Self::AddEntity(ent) => state.queue_add(ent.clone()),
+        }
+    }
+}
 
 pub struct Events {
-    pub queries_max_id: usize,
-    pub control: Option<Rc<dyn Fn(&mut crate::Game)>>,
-    pub physics: Option<Rc<dyn Fn(&mut crate::Game)>>,
-    pub collision: Option<Rc<dyn Fn(&mut crate::Game)>>,
-    pub resources: Option<Rc<dyn Fn(&mut crate::Game)>>,
+    pub(crate) control: Vec<(EngineCtrlEvent, Vec<EngineAction>)>,
+    pub(crate) collision: Vec<(EngineCollisionEvent, Vec<EngineAction>)>,
+    pub(crate) resources: Vec<(EngineRsrcEvent, Vec<EngineAction>)>,
 }
 
 impl Events {
     pub fn new() -> Self {
         Self {
-            queries_max_id: 0,
-            control: None,
-            physics: None,
-            collision: None,
-            resources: None,
+            control: Vec::new(),
+            collision: Vec::new(),
+            resources: Vec::new(),
         }
     }
-}
 
-#[macro_export]
-/// paddles_engine rules!
-///
-/// These rules are defined in a way that requires knowledge of how existence-based processing works, which is... not super ideal maybe??, since the concept is sort of difficult to get your head around. But it works?????? which is cool????
-///
-/// You define each rule in a stage: control, physics, collision, and resources, in the order they're executed. Each rule declares whether it zips two output tables or filters them, corresponding to the actions currently available in [ConditionTables][asterism::tables::ConditionTables] and [Compose][asterism::tables::Compose].
-///
-/// Finally, optionally, the user can define if they want a predicate to run on each value of the resulting output table ("foreach"), if at least one is true ("ifany"), or only on the first value of the output table ("forfirst"). (MORE OPTIONS HERE?)
-///
-/// Note that it's impossible to add events while the game is running. This is a restriction of how the macro works (with closures rather than from a data structure or JSON file or something).
-///
-/// @setup rules are used during initialization to add a row of query outputs to the table. @run rules are used in the game loop to update those table rows. @then rules execute a piece of code according to the table output (as described above).
-macro_rules! rules {
-    (@setup filter $id:expr, $filter:expr => $filter_type:ty, |$_filter_pat:pat, $logic:pat, $state:pat| $_predicate:block $(, $($_then:tt)*)?) => {
-        |game: &mut $crate::Game| {
-            game.tables.add_query::<$filter_type>(
-                $id,
-                Some($crate::Compose::Filter($filter)),
-            );
+    pub fn add_ctrl_event(&mut self, event: EngineCtrlEvent, reaction: EngineAction) {
+        if let Some(idx) = self.control.iter().position(|(e, _)| *e == event) {
+            let (_, reactions) = &mut self.control[idx];
+            reactions.push(reaction);
+        } else {
+            self.control.push((event, vec![reaction]));
         }
-    };
-    (@setup zip $id:expr, ($zip1:expr => $zip_ty1:ty, $zip2:expr => $zip_ty2:ty) $(, $($_then:tt)*)?) => {
-        |game: &mut $crate::Game| {
-            game.tables.add_query::<($zip_ty1, $zip_ty2)>(
-                $id,
-                Some($crate::Compose::Zip(
-                    $zip1,
-                    $zip2,
-                )),
-            );
+    }
+
+    pub fn add_ctrl_events(&mut self, event: EngineCtrlEvent, mut reactions: Vec<EngineAction>) {
+        if let Some(idx) = self.control.iter().position(|(e, _)| *e == event) {
+            let (_, r) = &mut self.control[idx];
+            r.append(&mut reactions);
+        } else {
+            self.control.push((event, reactions));
         }
-    };
+    }
 
-    (@run filter $id:expr, $filter:expr => $filter_type:ty, |$filter_pat:pat, $state:pat, $logics:pat| $predicate:block) => {
-        |game: &mut Game| {
-            let $logics = &game.logics;
-            let $state = &game.state;
-            game
-                .tables
-                .update_filter($id, |$filter_pat: &$filter_type| $predicate)
-                .unwrap();
-            }
-    };
-    (@run filter $id:expr, $filter:expr => $filter_type:ty, |$filter_pat:pat, $state:pat, $logics:pat| $predicate:block, $($then:tt)*) => {
-        |game: &mut Game| {
-            let ans = {
-                let $state = &game.state;
-                let $logics = &game.logics;
-                game
-                .tables
-                .update_filter($id, |$filter_pat: &$filter_type| $predicate)
-                .unwrap()
-            };
-            $crate::rules!(@then [ans] [game] [&$filter_type], $($then)*);
+    pub fn add_col_events(&mut self, event: EngineCollisionEvent, reactions: Vec<EngineAction>) {
+        self.collision.push((event, reactions));
+    }
+
+    pub fn add_rsrc_event(&mut self, event: EngineRsrcEvent, reaction: EngineAction) {
+        if let Some(idx) = self.resources.iter().position(|(e, _)| *e == event) {
+            let (_, reactions) = &mut self.resources[idx];
+            reactions.push(reaction);
+        } else {
+            self.resources.push((event, vec![reaction]));
         }
-    };
-
-    (@run zip $id:expr, ($zip1:expr => $zip_ty1:ty, $zip2:expr => $zip_ty2:ty)) => {
-        |game: &mut Game| {
-        game.tables
-            .update_zip::<$zip_ty1, $zip_ty2>($id)
-            .unwrap();
+    }
+    pub fn add_rsrc_events(&mut self, event: EngineRsrcEvent, mut reactions: Vec<EngineAction>) {
+        if let Some(idx) = self.resources.iter().position(|(e, _)| *e == event) {
+            let (_, r) = &mut self.resources[idx];
+            r.append(&mut reactions);
+        } else {
+            self.resources.push((event, reactions));
         }
-    };
-
-    (@run zip $id:expr, ($_zip1:expr => $zip_ty1:ty, $_zip2:expr => $zip_ty2:ty), $($then:tt)*) => {
-        |game: &mut Game| {
-            let ans = game.tables
-                .update_zip::<$zip_ty1, $zip_ty2>($id)
-                .unwrap();
-            $crate::rules!(@then [ans] [game] [&($zip_ty1, $zip_ty2)], $($then)*);
-        }
-    };
-
-    (@then [$answers:ident] [$game:ident] [$ev_type:ty], foreach |$event:pat, $state:pat, $logics:pat| $predicate:block) => {
-        let predicate = |$event: $ev_type, $state: &mut $crate::State, $logics: &mut $crate::Logics| $predicate;
-        for ans in $answers.iter() {
-            predicate(ans, &mut $game.state, &mut $game.logics);
-        }
-    };
-
-    (@then [$answers:ident] [$game:ident] [$_ev_type:ty], ifany |$state:pat, $logics:pat| $predicate:block) => {
-        let $state = &game.state;
-        let $logics = &game.logics;
-        if !$answers.is_empty() {
-            $predicate
-        }
-    };
-
-    (@then [$answers:ident] [$game:ident] [$ev_type:ty], forfirst |$event:pat, $state:pat, $logics:pat| $predicate:block) => {
-        let predicate = |$event: $ev_type, $state: &mut $crate::State, $logics: &mut $crate::Logics| $predicate;
-        if let Some(ans) = $answers.iter().next() {
-            predicate(ans, &mut $game.state, &mut $game.logics);
-        }
-    };
-
-    ($game:ident =>
-        control: [ $({$($ctrl_rule:tt)+}),* ]
-        physics: [ $({$($phys_rule:tt)+}),* ]
-        collision: [ $({$($col_rule:tt)+}),* ]
-        resources: [ $({$($rsrc_rule:tt)+}),* ]
-    ) => {
-        {
-            use std::rc::Rc;
-            trait PaddlesUserEvents: $crate::PaddlesGame {
-                fn setup(&mut self, setup: Rc<dyn Fn(&mut Self)>);
-                fn control(&mut self, control: Rc<dyn Fn(&mut Self)>);
-                fn collision(&mut self, collision: Rc<dyn Fn(&mut Self)>);
-                fn resources(&mut self, resources: Rc<dyn Fn(&mut Self)>);
-                fn physics(&mut self, physics: Rc<dyn Fn(&mut Self)>);
-            }
-            impl PaddlesUserEvents for $crate::Game {
-                fn setup(&mut self, setup: Rc<dyn Fn(&mut $crate::Game)>) {
-                    setup(self);
-                }
-                fn control(&mut self, control: Rc<dyn Fn(&mut Self)>) {
-                    self.events.control = Some(control);
-                }
-                fn collision(&mut self, collision: Rc<dyn Fn(&mut Self)>) {
-                    self.events.collision = Some(collision);
-                }
-                fn resources(&mut self, resources: Rc<dyn Fn(&mut Self)>) {
-                    self.events.resources = Some(resources);
-            }
-                fn physics(&mut self, physics: Rc<dyn Fn(&mut Self)>) {
-                    self.events.physics = Some(physics);
-                }
-            }
-
-            let setup = Rc::new(move |game: &mut $crate::Game| {
-                $($crate::rules!(@setup $($ctrl_rule)+)(game);)*
-                $($crate::rules!(@setup $($phys_rule)+)(game);)*
-                $($crate::rules!(@setup $($col_rule)+)(game);)*
-                $($crate::rules!(@setup $($rsrc_rule)+)(game);)*
-            });
-            $game.setup(setup);
-
-            let control = Rc::new(move |game: &mut $crate::Game| {
-                $($crate::rules!(@run $($ctrl_rule)+)(game);)*
-            });
-            let physics = Rc::new(move |game: &mut $crate::Game| {
-                $($crate::rules!(@run $($phys_rule)+)(game);)*
-            });
-            let collision = Rc::new(move |game: &mut $crate::Game| {
-                $($crate::rules!(@run $($col_rule)+)(game);)*
-            });
-            let resources = Rc::new(move |game: &mut $crate::Game| {
-                $($crate::rules!(@run $($rsrc_rule)+)(game);)*
-            });
-
-            $game.control(control);
-            $game.physics(physics);
-            $game.collision(collision);
-            $game.resources(resources);
-        }
-    };
+    }
 }
