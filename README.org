@@ -4,7 +4,8 @@ An asterism is a pattern people can see in stars, and while there is a fixed set
 
 Asterism is a project in operationalizing operational logics to the extent that they can be composed to form game engines.
 
-Authors (2019--2022): Cynthia Li, Katiana Wieser, Carl Bell, Julie Ye, Jayce Garner, Joseph C. Osborn
+Current authors: Cynthia Li, Joseph C. Osborn\\
+Previous authors (2019--2022): Katiana Wieser, Carl Bell, Julie Ye, Jayce Garner
 
 * Prototypes
 
@@ -15,3 +16,10 @@ This means that instead of a monolithic =update()= function which combines diffe
 For rendering, the collision logic can be configured to map its provided communication channel (the positions and extents of objects, the locations of contacts) onto an output device (a framebuffer, 3D renderer, or terminal).  The game can then make use of this mapping to position and draw game content.
 
 As another example, consider the control logic which is initialized with appropriate input devices and configured to map these onto the specific game's abstract inputs ("move the player character in the X direction", "confirm a menu option", etc).  Later the values to which the user has controlled these abstract inputs can be queried to e.g. effect changes in the velocities of bodies in the physics logic.
+
+* Ceptre
+
+[[https://www.convivial.tools/PapersPublic/ceptre-tog.pdf][Ceptre]] is a programming language by Chris Martens that allows a user to model a game through predicates and rewrite rules. We're looking to be able to convert Ceptre games to Asterism ones because both seek to target game genres beyond 2D platformers and top-down dungeon crawlers. We're interested in the potential for formal overlap between the two systems.
+
+=boxsy-ceptre= is a case study for converting a dungeon crawler written in Ceptre to Asterism games through the =boxsy= engine.
+
